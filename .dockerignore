@@ -1,0 +1,9 @@
+.git
+.github
+.data
+**/.next
+**/__pycache__
+**/node_modules
+**/.pytest_cache
+plan
+
