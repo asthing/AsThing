@@ -35,7 +35,7 @@ By February 2027, demonstrate that you can:
 | Admin web app | Nuxt + TypeScript | Separate admin workflow; introduce after the core API works. |
 | Core API / AI | FastAPI | Async-friendly APIs, typed contracts, streaming AI responses. |
 | Internal operations | Django + Django Admin | Learn Django through a focused internal moderation/configuration tool. |
-| Source of truth | PostgreSQL + pgvector | Relational data, transactions, and vector retrieval in one place. |
+| Source of truth | PostgreSQL + Qdrant | PostgreSQL stores durable metadata and chunks; Qdrant stores vectors. |
 | Raw extracted document data | MongoDB | Flexible parser output and versioned document metadata. |
 | Async jobs | Celery + Redis locally; SQS on AWS | File processing and embeddings must not block HTTP requests. |
 | Object storage | MinIO locally; S3 on AWS | Same file-storage contract in local and cloud environments. |
@@ -128,7 +128,7 @@ ai-knowledge-workspace/
 ### Phase 3 — RAG MVP (02 Nov – 06 Dec)
 
 - Celery job: extract → normalize → chunk → embed → store vectors.
-- Search relevant chunks with pgvector.
+- Search relevant chunks with Qdrant.
 - Streaming RAG answer with source citations.
 - Store answer feedback and logs.
 - Build a 30–50 question evaluation set with expected source references.

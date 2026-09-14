@@ -1,6 +1,6 @@
 # Architecture
 
-The first foundation slice runs five services with Docker Compose:
+The local stack runs web, API, worker, PostgreSQL, Redis, MinIO, and Qdrant.
 
 ```mermaid
 flowchart LR
@@ -9,8 +9,12 @@ flowchart LR
     API --> PostgreSQL
     API --> Redis
     API --> MinIO
+    Redis --> Worker[Celery worker]
+    Worker --> PostgreSQL
+    Worker --> MinIO
+    Worker --> Qdrant
 ```
 
-The API now stores knowledge bases in PostgreSQL through SQLAlchemy. Alembic migrations run before the local API starts, so the persistent PostgreSQL volume keeps created knowledge bases across stack restarts. Redis will support background jobs, and MinIO will provide an S3-compatible local object-store contract.
+PostgreSQL stores durable metadata, processing records, and chunks. MinIO stores original files. Redis and Celery run background processing, and Qdrant stores chunk vectors. No pgvector is used.
 
 Nuxt, Django, cloud infrastructure, Kafka, DynamoDB, and Kubernetes are deferred until their roadmap phases.

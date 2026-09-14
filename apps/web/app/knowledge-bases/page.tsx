@@ -1,6 +1,7 @@
 "use client";
 
 import { FormEvent, useEffect, useRef, useState } from "react";
+import Link from "next/link";
 
 type KnowledgeBase = {
   id: string;
@@ -143,8 +144,11 @@ export default function KnowledgeBasesPage() {
           <ul>
             {knowledgeBases.map((knowledgeBase) => (
               <li key={knowledgeBase.id}>
-                <strong>{knowledgeBase.name}</strong>
-                <time dateTime={knowledgeBase.created_at}>{formatCreatedAt(knowledgeBase.created_at)}</time>
+                <div>
+                  <strong>{knowledgeBase.name}</strong>
+                  <time dateTime={knowledgeBase.created_at}>{formatCreatedAt(knowledgeBase.created_at)}</time>
+                </div>
+                <Link className="secondary-link" href={`/knowledge-bases/${knowledgeBase.id}`}>Open</Link>
               </li>
             ))}
           </ul>

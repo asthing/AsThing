@@ -101,8 +101,8 @@ h2 { margin: 10px 0 28px; font-family: Georgia, "Times New Roman", serif; font-s
 .knowledge-bases-page { padding-top: 64px; }
 .page-heading { max-width: 700px; }
 .page-heading h1 { font-size: clamp(3rem, 7vw, 5.5rem); }
-.create-panel, .knowledge-base-list { border-top: 1px solid var(--line); margin-top: 42px; padding-top: 28px; }
-.create-panel h2, .knowledge-base-list h2 { font-size: 1.6rem; margin: 0 0 18px; }
+.create-panel, .knowledge-base-list, .document-list { border-top: 1px solid var(--line); margin-top: 42px; padding-top: 28px; }
+.create-panel h2, .knowledge-base-list h2, .document-list h2 { font-size: 1.6rem; margin: 0 0 18px; }
 label { display: block; font-size: 0.9rem; font-weight: 700; margin-bottom: 8px; }
 .create-row { display: flex; gap: 12px; max-width: 680px; }
 input {
@@ -122,14 +122,50 @@ input:focus { border-color: var(--accent); outline: 3px solid rgba(23, 107, 76, 
 .list-heading span { background: rgba(23, 107, 76, 0.12); border-radius: 999px; color: var(--accent); font-size: 0.85rem; font-weight: 700; padding: 4px 9px; }
 .knowledge-base-list ul { display: grid; gap: 10px; list-style: none; margin: 0; padding: 0; }
 .knowledge-base-list li { align-items: center; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; display: flex; justify-content: space-between; padding: 18px; }
+.knowledge-base-list li > div { display: grid; gap: 6px; }
 .knowledge-base-list time { color: var(--muted); font-size: 0.88rem; }
+.document-list ul { display: grid; gap: 10px; list-style: none; margin: 0; padding: 0; }
+.document-list li { align-items: center; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; display: flex; gap: 18px; justify-content: space-between; padding: 18px; }
+.document-list li > div:first-child { display: grid; gap: 6px; min-width: 0; overflow-wrap: anywhere; }
+.document-list li span, .document-list time { color: var(--muted); font-size: 0.88rem; }
+.document-status { align-items: flex-end; display: grid; gap: 5px; text-align: right; }
+.document-status strong { align-items: center; color: var(--accent); display: flex; gap: 7px; justify-content: flex-end; }
+.document-status span { max-width: 180px; }
+.document-status-dot { background: currentColor; border-radius: 50%; display: inline-block; height: 8px; width: 8px; }
+.document-status--uploaded strong { color: #80641f; }
+.document-status--processing strong { color: #9a522d; }
+.document-status--ready strong { color: var(--accent); }
+.document-status--failed strong { color: var(--warn); }
 .empty-state { background: var(--surface); border: 1px dashed var(--line); border-radius: 12px; max-width: 680px; padding: 24px; }
 .empty-state p { color: var(--muted); margin-top: 0; }
+.secondary-link, .back-link, .text-button {
+  background: transparent;
+  border: 0;
+  color: var(--accent);
+  font: inherit;
+  font-weight: 700;
+  padding: 0;
+  text-decoration: none;
+}
+.text-button { cursor: pointer; }
+.knowledge-base-detail { padding-top: 46px; }
+.back-link { display: inline-block; margin-bottom: 28px; }
+.upload-panel { border-top: 1px solid var(--line); margin-top: 42px; max-width: 680px; padding-top: 28px; }
+.upload-panel h2 { font-size: 1.6rem; margin: 0 0 10px; }
+.file-label { margin-top: 24px; }
+input[type="file"] { border: 0; padding: 0; }
+.selected-file { align-items: center; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; display: flex; justify-content: space-between; margin-top: 16px; padding: 16px; }
+.selected-file div { display: grid; gap: 5px; overflow-wrap: anywhere; }
+.selected-file span { color: var(--muted); font-size: 0.9rem; }
+.upload-actions { margin-top: 18px; }
+.success-message { color: var(--accent); font-weight: 700; margin: 12px 0 0; }
 
 @media (max-width: 760px) {
   main { width: min(100% - 28px, 1080px); padding-top: 4vh; }
   .hero { padding-bottom: 52px; }
   .services { grid-template-columns: 1fr 1fr; }
   .services article:last-child { grid-column: 1 / -1; }
-  .create-row, .knowledge-base-list li { align-items: stretch; flex-direction: column; }
+  .create-row, .knowledge-base-list li, .document-list li { align-items: stretch; flex-direction: column; }
+  .document-status { align-items: start; text-align: left; }
+  .selected-file { align-items: flex-start; flex-direction: column; gap: 12px; }
 }

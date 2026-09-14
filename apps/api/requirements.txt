@@ -1,5 +1,15 @@
 alembic==1.19.2
+boto3==1.43.93
+celery[redis]==5.5.3
 fastapi==0.141.1
+python-docx==1.2.0
+qdrant-client==1.14.2
+pypdf==5.9.0
 psycopg[binary]==3.3.5
+python-multipart==0.0.32
+requests==2.32.5
+sentence-transformers==5.2.0
 SQLAlchemy==2.0.52
+--extra-index-url https://download.pytorch.org/whl/cpu
+torch==2.14.0+cpu
 uvicorn[standard]==0.52.4

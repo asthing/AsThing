@@ -3,6 +3,7 @@ import os
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.documents import router as documents_router
 from app.knowledge_bases import router as knowledge_bases_router
 
 app = FastAPI(
@@ -20,6 +21,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 app.include_router(knowledge_bases_router)
+app.include_router(documents_router)
 
 
 @app.get("/health", tags=["system"])
