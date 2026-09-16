@@ -1,5 +1,6 @@
 import importlib
 import sys
+import time
 from datetime import UTC, datetime, timedelta
 from types import ModuleType
 from uuid import UUID, uuid4
@@ -136,6 +137,20 @@ def test_worker_task_claims_before_hook_and_heartbeats_before_and_after() -> Non
     assert as_utc(job.last_heartbeat_at) == after_hook_time
     assert as_utc(job.lease_expires_at) == after_hook_time + timedelta(minutes=5)
     assert document.status == DocumentStatus.PROCESSING
+
+
+def test_worker_keeps_lease_during_a_long_processing_phase() -> None:
+    document_id, job_id = create_document_and_job()
+
+    result = run_processing_task(
+        document_id,
+        processor_hook=lambda _claim: time.sleep(0.45),
+        lease_duration=timedelta(milliseconds=300),
+    )
+
+    _, job = load_document_and_job(document_id, job_id)
+    assert result is True
+    assert as_utc(job.lease_expires_at) > datetime.now(UTC)
 
 
 def test_worker_heartbeats_around_retrieval_extraction_and_persistence(monkeypatch) -> None:

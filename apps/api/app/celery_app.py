@@ -9,7 +9,7 @@ celery_app = Celery(
 )
 celery_app.conf.update(
     broker_transport_options={
-        "max_retries": 0,
+        "max_retries": 3,
         "socket_connect_timeout": 1.0,
         "socket_timeout": 1.0,
     },

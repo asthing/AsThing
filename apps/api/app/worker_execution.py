@@ -1,6 +1,7 @@
 import logging
 from collections.abc import Callable
 from datetime import datetime, timedelta
+from threading import Event, Thread
 from uuid import UUID
 
 from sqlalchemy.exc import SQLAlchemyError
@@ -291,9 +292,29 @@ def _run_processing_phase[PhaseResult](
     ):
         return False, None
 
+    stop_renewal = Event()
+    lease_lost = Event()
+
+    def renew_lease() -> None:
+        interval = min(60.0, lease_duration.total_seconds() / 3)
+        while not stop_renewal.wait(interval):
+            if not _heartbeat_claim(
+                claim,
+                session_factory=session_factory,
+                now=clock(),
+                lease_duration=lease_duration,
+                position=f"during_{phase}",
+            ):
+                lease_lost.set()
+                return
+
+    renewal_thread = Thread(target=renew_lease, daemon=True)
+    renewal_thread.start()
     try:
         result = action()
     except Exception:
+        stop_renewal.set()
+        renewal_thread.join()
         _heartbeat_claim(
             claim,
             session_factory=session_factory,
@@ -303,6 +324,10 @@ def _run_processing_phase[PhaseResult](
         )
         raise
 
+    stop_renewal.set()
+    renewal_thread.join()
+    if lease_lost.is_set():
+        return False, None
     if not _heartbeat_claim(
         claim,
         session_factory=session_factory,
