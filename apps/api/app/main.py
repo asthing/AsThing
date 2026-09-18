@@ -3,8 +3,10 @@ import os
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.answers import router as answers_router
 from app.documents import router as documents_router
 from app.knowledge_bases import router as knowledge_bases_router
+from app.retrieval import router as retrieval_router
 
 app = FastAPI(
     title="AI Knowledge Workspace API",
@@ -22,6 +24,8 @@ app.add_middleware(
 )
 app.include_router(knowledge_bases_router)
 app.include_router(documents_router)
+app.include_router(retrieval_router)
+app.include_router(answers_router)
 
 
 @app.get("/health", tags=["system"])

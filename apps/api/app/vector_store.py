@@ -2,6 +2,7 @@ import os
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from enum import StrEnum
+from math import isfinite
 from typing import Protocol
 from uuid import UUID
 
@@ -19,6 +20,7 @@ class VectorStoreErrorCategory(StrEnum):
     VECTOR_INVALID = "VectorInvalid"
     UPSERT_FAILED = "VectorUpsertFailed"
     DELETE_FAILED = "VectorDeleteFailed"
+    QUERY_FAILED = "VectorQueryFailed"
 
 
 class VectorStoreError(Exception):
@@ -52,6 +54,14 @@ class VectorPoint:
     payload: dict[str, str | int]
 
 
+@dataclass(frozen=True)
+class VectorSearchHit:
+    """An internal Qdrant result containing no vector or payload text."""
+
+    chunk_id: UUID
+    score: float
+
+
 class VectorStoreAdapter(Protocol):
     def collection_config(self, collection_name: str) -> VectorCollectionConfig | None: ...
 
@@ -60,6 +70,18 @@ class VectorStoreAdapter(Protocol):
     ) -> None: ...
 
     def upsert(self, collection_name: str, points: Sequence[VectorPoint]) -> None: ...
+
+    def search(
+        self,
+        collection_name: str,
+        vector: Sequence[float],
+        *,
+        knowledge_base_id: UUID,
+        embedding_model: str,
+        embedding_revision: str,
+        limit: int,
+        score_threshold: float,
+    ) -> list[VectorSearchHit]: ...
 
     def delete_document(self, collection_name: str, document_id: UUID) -> None: ...
 
@@ -128,6 +150,40 @@ class QdrantVectorStore:
         except Exception:
             raise VectorStoreError(VectorStoreErrorCategory.UPSERT_FAILED) from None
 
+    def search(
+        self,
+        vector: Sequence[float],
+        *,
+        knowledge_base_id: UUID,
+        embedding_model: str,
+        embedding_revision: str,
+        limit: int,
+        score_threshold: float,
+    ) -> list[VectorSearchHit]:
+        if (
+            len(vector) != VECTOR_DIMENSION
+            or not all(isfinite(value) for value in vector)
+            or limit < 1
+            or not isfinite(score_threshold)
+        ):
+            raise VectorStoreError(VectorStoreErrorCategory.VECTOR_INVALID)
+
+        self._require_existing_collection()
+        try:
+            return self._get_adapter().search(
+                self.collection_name,
+                vector,
+                knowledge_base_id=knowledge_base_id,
+                embedding_model=embedding_model,
+                embedding_revision=embedding_revision,
+                limit=limit,
+                score_threshold=score_threshold,
+            )
+        except VectorStoreError:
+            raise
+        except Exception:
+            raise VectorStoreError(VectorStoreErrorCategory.QUERY_FAILED) from None
+
     def delete_document(self, document_id: UUID) -> None:
         try:
             self._get_adapter().delete_document(self.collection_name, document_id)
@@ -153,6 +209,21 @@ class QdrantVectorStore:
                     VectorStoreErrorCategory.COLLECTION_UNAVAILABLE
                 ) from None
         return self._adapter
+
+    def _require_existing_collection(self) -> None:
+        try:
+            config = self._get_adapter().collection_config(self.collection_name)
+        except VectorStoreError:
+            raise
+        except Exception:
+            raise VectorStoreError(VectorStoreErrorCategory.COLLECTION_UNAVAILABLE) from None
+
+        if config is None:
+            raise VectorStoreError(VectorStoreErrorCategory.COLLECTION_UNAVAILABLE)
+        if config.dimension != VECTOR_DIMENSION or config.distance.casefold() != (
+            VECTOR_DISTANCE.casefold()
+        ):
+            raise VectorStoreError(VectorStoreErrorCategory.COLLECTION_INCOMPATIBLE)
 
 
 def _build_points(chunks: Sequence[ChunkVector]) -> list[VectorPoint]:
@@ -230,6 +301,50 @@ class _QdrantClientAdapter:
             ],
             wait=True,
         )
+
+    def search(
+        self,
+        collection_name: str,
+        vector: Sequence[float],
+        *,
+        knowledge_base_id: UUID,
+        embedding_model: str,
+        embedding_revision: str,
+        limit: int,
+        score_threshold: float,
+    ) -> list[VectorSearchHit]:
+        from qdrant_client.models import FieldCondition, Filter, MatchValue
+
+        response = self.client.query_points(
+            collection_name=collection_name,
+            query=list(vector),
+            query_filter=Filter(
+                must=[
+                    FieldCondition(
+                        key="knowledge_base_id",
+                        match=MatchValue(value=str(knowledge_base_id)),
+                    ),
+                    FieldCondition(
+                        key="embedding_model",
+                        match=MatchValue(value=embedding_model),
+                    ),
+                    FieldCondition(
+                        key="embedding_revision",
+                        match=MatchValue(value=embedding_revision),
+                    ),
+                ]
+            ),
+            limit=limit,
+            score_threshold=score_threshold,
+            with_payload=["chunk_id"],
+            with_vectors=False,
+        )
+        hits = []
+        for point in response.points:
+            payload = point.payload or {}
+            chunk_id = UUID(str(payload["chunk_id"]))
+            hits.append(VectorSearchHit(chunk_id=chunk_id, score=float(point.score)))
+        return hits
 
     def delete_document(self, collection_name: str, document_id: UUID) -> None:
         from qdrant_client.models import FieldCondition, Filter, FilterSelector, MatchValue

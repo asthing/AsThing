@@ -10,6 +10,7 @@ from app.vector_store import (
     ChunkVector,
     QdrantVectorStore,
     VectorCollectionConfig,
+    VectorSearchHit,
     VectorStoreError,
     VectorStoreErrorCategory,
 )
@@ -24,6 +25,9 @@ class FakeVectorStoreAdapter:
         self.deleted_documents = []
         self.deleted_point_ids = []
         self.upsert_error: Exception | None = None
+        self.search_error: Exception | None = None
+        self.search_results: list[VectorSearchHit] = []
+        self.search_calls = []
         self.create_error: Exception | None = None
         self.config_after_create_error: VectorCollectionConfig | None = None
 
@@ -43,6 +47,32 @@ class FakeVectorStoreAdapter:
         self.upsert_calls.append((collection_name, list(points)))
         for point in points:
             self.points_by_id[point.point_id] = point
+
+    def search(
+        self,
+        collection_name: str,
+        vector,
+        *,
+        knowledge_base_id,
+        embedding_model: str,
+        embedding_revision: str,
+        limit: int,
+        score_threshold: float,
+    ):
+        self.search_calls.append(
+            (
+                collection_name,
+                vector,
+                knowledge_base_id,
+                embedding_model,
+                embedding_revision,
+                limit,
+                score_threshold,
+            )
+        )
+        if self.search_error is not None:
+            raise self.search_error
+        return self.search_results
 
     def delete_document(self, collection_name: str, document_id) -> None:
         self.deleted_documents.append((collection_name, document_id))
@@ -184,3 +214,57 @@ def test_vector_store_rejects_wrong_dimension_and_duplicate_point_ids() -> None:
     assert dimension_error.value.category == VectorStoreErrorCategory.VECTOR_INVALID
     assert duplicate_error.value.category == VectorStoreErrorCategory.VECTOR_INVALID
     assert adapter.upsert_calls == []
+
+
+def test_vector_search_filters_a_knowledge_base_and_pinned_embedding_identity() -> None:
+    adapter = FakeVectorStoreAdapter(
+        VectorCollectionConfig(VECTOR_DIMENSION, VECTOR_DISTANCE)
+    )
+    expected = VectorSearchHit(chunk_id=uuid4(), score=0.86)
+    adapter.search_results = [expected]
+    store = QdrantVectorStore(adapter_factory=lambda: adapter)
+    knowledge_base_id = uuid4()
+
+    results = store.search(
+        [0.2] * VECTOR_DIMENSION,
+        knowledge_base_id=knowledge_base_id,
+        embedding_model="BAAI/bge-m3",
+        embedding_revision=EMBEDDING_MODEL_REVISION,
+        limit=5,
+        score_threshold=0.35,
+    )
+
+    assert results == [expected]
+    assert adapter.search_calls == [
+        (
+            DOCUMENT_CHUNKS_COLLECTION,
+            [0.2] * VECTOR_DIMENSION,
+            knowledge_base_id,
+            "BAAI/bge-m3",
+            EMBEDDING_MODEL_REVISION,
+            5,
+            0.35,
+        )
+    ]
+
+
+def test_vector_search_returns_a_typed_error_without_raw_qdrant_details() -> None:
+    adapter = FakeVectorStoreAdapter(
+        VectorCollectionConfig(VECTOR_DIMENSION, VECTOR_DISTANCE)
+    )
+    adapter.search_error = RuntimeError("http://qdrant:6333 query contained private text")
+    store = QdrantVectorStore(adapter_factory=lambda: adapter)
+
+    with pytest.raises(VectorStoreError) as error:
+        store.search(
+            [0.2] * VECTOR_DIMENSION,
+            knowledge_base_id=uuid4(),
+            embedding_model="BAAI/bge-m3",
+            embedding_revision=EMBEDDING_MODEL_REVISION,
+            limit=5,
+            score_threshold=0.35,
+        )
+
+    assert error.value.category == VectorStoreErrorCategory.QUERY_FAILED
+    assert str(error.value) == VectorStoreErrorCategory.QUERY_FAILED.value
+    assert error.value.__cause__ is None

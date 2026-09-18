@@ -32,7 +32,7 @@ def test_worker_app_registers_document_task_module(monkeypatch) -> None:
     assert captured_configuration["task_ignore_result"] is True
     assert captured_configuration["worker_prefetch_multiplier"] == 1
     assert captured_configuration["broker_transport_options"] == {
-        "max_retries": 0,
+        "max_retries": 3,
         "socket_connect_timeout": 1.0,
         "socket_timeout": 1.0,
     }

@@ -11,6 +11,8 @@ import {
   startDocumentPolling,
   type DocumentListItem,
 } from "./document-status";
+import { createAnswerRequestManager, type AnswerResponse } from "./answer-request";
+import { createSourceSearchRequestManager, type SourceSearchResponse } from "./source-search";
 
 type KnowledgeBase = {
   id: string;
@@ -53,6 +55,184 @@ async function errorMessage(response: Response): Promise<string> {
     return body.detail;
   }
   return "Something went wrong. Please try again.";
+}
+
+function SourceSearchPanel({ knowledgeBaseId }: { knowledgeBaseId: string }) {
+  const [question, setQuestion] = useState("");
+  const [sourceSearchResponse, setSourceSearchResponse] = useState<SourceSearchResponse | null>(null);
+  const [sourceSearchError, setSourceSearchError] = useState<string | null>(null);
+  const [isSearchingSources, setIsSearchingSources] = useState(false);
+  const [answerResponse, setAnswerResponse] = useState<AnswerResponse | null>(null);
+  const [answerError, setAnswerError] = useState<string | null>(null);
+  const [isGeneratingAnswer, setIsGeneratingAnswer] = useState(false);
+  const sourceSearchRequests = useRef(createSourceSearchRequestManager());
+  const answerRequests = useRef(createAnswerRequestManager());
+
+  useEffect(() => () => {
+    sourceSearchRequests.current.cancel();
+    answerRequests.current.cancel();
+  }, []);
+
+  async function fetchSourceSearch(questionToSearch: string, signal: AbortSignal): Promise<unknown> {
+    const response = await fetch(`${apiUrl}/knowledge-bases/${knowledgeBaseId}/sources/search`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ question: questionToSearch }),
+      signal,
+    });
+    if (!response.ok) throw new Error(await errorMessage(response));
+    return response.json();
+  }
+
+  async function searchSources(retry = false) {
+    if (isSearchingSources || isGeneratingAnswer) return;
+    setSourceSearchError(null);
+    if (!retry) {
+      setSourceSearchResponse(null);
+      setAnswerResponse(null);
+      setAnswerError(null);
+    }
+    setIsSearchingSources(true);
+    let requestResult;
+    try {
+      requestResult = retry
+        ? await sourceSearchRequests.current.retry(fetchSourceSearch)
+        : await sourceSearchRequests.current.submit(question, fetchSourceSearch);
+      if (!requestResult.current) return;
+      if (requestResult.error) throw requestResult.error;
+      if (!requestResult.response) throw new Error("Source search data is unavailable. Please try again.");
+      setSourceSearchResponse(requestResult.response);
+    } catch (error: unknown) {
+      if (requestResult && !requestResult.current) return;
+      const message =
+        error instanceof Error ? error.message : "Could not search source documents. Please try again.";
+      setSourceSearchError(message);
+    } finally {
+      if (!requestResult || requestResult.current) setIsSearchingSources(false);
+    }
+  }
+
+  function handleSourceSearch(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    void searchSources();
+  }
+
+  async function fetchAnswer(questionToAsk: string, signal: AbortSignal): Promise<unknown> {
+    const response = await fetch(`${apiUrl}/knowledge-bases/${knowledgeBaseId}/answers`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ question: questionToAsk }),
+      signal,
+    });
+    if (!response.ok) throw new Error(await errorMessage(response));
+    return response.json();
+  }
+
+  async function askForAnswer(retry = false) {
+    if (isSearchingSources || isGeneratingAnswer) return;
+    setAnswerError(null);
+    if (!retry) {
+      setAnswerResponse(null);
+      setSourceSearchResponse(null);
+      setSourceSearchError(null);
+    }
+    setIsGeneratingAnswer(true);
+    let requestResult;
+    try {
+      requestResult = retry
+        ? await answerRequests.current.retry(fetchAnswer)
+        : await answerRequests.current.submit(question, fetchAnswer);
+      if (!requestResult.current) return;
+      if (requestResult.error) throw requestResult.error;
+      if (!requestResult.response) throw new Error("Answer data is unavailable. Please try again.");
+      setAnswerResponse(requestResult.response);
+    } catch (error: unknown) {
+      if (requestResult && !requestResult.current) return;
+      setAnswerError(
+        error instanceof Error ? error.message : "Could not generate an answer. Please try again.",
+      );
+    } finally {
+      if (!requestResult || requestResult.current) setIsGeneratingAnswer(false);
+    }
+  }
+
+  return (
+    <section className="source-search-panel" aria-labelledby="source-search-title">
+      <h2 id="source-search-title">Find relevant sources</h2>
+      <p className="muted">Searches only documents that are ready in this knowledge base.</p>
+      <form onSubmit={handleSourceSearch} noValidate>
+        <label htmlFor="source-question">Question</label>
+        <textarea
+          id="source-question"
+          name="question"
+          value={question}
+          onChange={(event) => setQuestion(event.target.value)}
+          disabled={isSearchingSources || isGeneratingAnswer}
+          aria-describedby={sourceSearchError ? "source-search-error" : answerError ? "answer-error" : undefined}
+        />
+        <div className="upload-actions">
+          <button type="submit" disabled={isSearchingSources || isGeneratingAnswer}>
+            {isSearchingSources ? "Finding sources…" : "Find relevant sources"}
+          </button>
+          <button type="button" onClick={() => void askForAnswer()} disabled={isSearchingSources || isGeneratingAnswer}>
+            {isGeneratingAnswer ? "Generating answer…" : "Get answer"}
+          </button>
+        </div>
+      </form>
+
+      {isGeneratingAnswer && <p className="muted" role="status">Generating an answer from this knowledge base…</p>}
+      {answerError && (
+        <div className="empty-state" id="answer-error" role="alert">
+          <p>{answerError}</p>
+          <button type="button" onClick={() => void askForAnswer(true)} disabled={isGeneratingAnswer}>
+            Retry answer
+          </button>
+        </div>
+      )}
+      {answerResponse?.outcome === "no_answer" && (
+        <div className="empty-state" role="status"><p>{answerResponse.message}</p></div>
+      )}
+      {answerResponse?.outcome === "answer" && (
+        <div className="answer-result" aria-live="polite">
+          <h3>Answer</h3>
+          <p>{answerResponse.answer}</p>
+        </div>
+      )}
+
+      {isSearchingSources && <p className="muted" role="status">Finding relevant sources…</p>}
+      {sourceSearchError && (
+        <div className="empty-state" id="source-search-error" role="alert">
+          <p>{sourceSearchError}</p>
+          <button type="button" onClick={() => void searchSources(true)} disabled={isSearchingSources}>
+            Retry
+          </button>
+        </div>
+      )}
+      {sourceSearchResponse?.outcome === "no_ready_documents" && (
+        <div className="empty-state">
+          <p>Documents must finish processing before they can be searched.</p>
+        </div>
+      )}
+      {sourceSearchResponse?.outcome === "no_results" && (
+        <div className="empty-state">
+          <p>No relevant source passages were found for this question.</p>
+        </div>
+      )}
+      {sourceSearchResponse?.outcome === "results" && (
+        <ul className="source-results" aria-label="Relevant source passages">
+          {sourceSearchResponse.results.map((result, index) => (
+            <li key={`${result.source_filename}-${index}`}>
+              <div>
+                <strong>{result.source_filename}</strong>
+                <span>{result.file_type.toUpperCase()}</span>
+              </div>
+              <p>{result.excerpt}</p>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  );
 }
 
 export default function KnowledgeBasePage() {
@@ -283,6 +463,8 @@ export default function KnowledgeBasePage() {
           </ul>
         )}
       </section>
+
+      <SourceSearchPanel key={knowledgeBaseId} knowledgeBaseId={knowledgeBaseId} />
 
       <section className="upload-panel" aria-labelledby="upload-title">
         <h2 id="upload-title">Upload document</h2>

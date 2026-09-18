@@ -58,6 +58,24 @@ services:
       retries: 10
     restart: unless-stopped
 
+  ollama:
+    image: ollama/ollama:0.34.1
+    environment:
+      OLLAMA_HOST: 0.0.0.0:11434
+      OLLAMA_NO_CLOUD: "1"
+      OLLAMA_NUM_PARALLEL: "1"
+      OLLAMA_MAX_LOADED_MODELS: "1"
+      OLLAMA_MAX_QUEUE: "1"
+      OLLAMA_MODELS: /models
+    volumes:
+      - ollama_model_cache:/models
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
   api:
     build:
       context: ./apps/api
@@ -71,6 +89,9 @@ services:
       S3_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:-minioadmin}
       S3_BUCKET: ${S3_BUCKET:-documents}
       S3_REGION: ${S3_REGION:-us-east-1}
+      QDRANT_URL: http://qdrant:6333
+      QDRANT_COLLECTION: document_chunks
+      OLLAMA_URL: ${OLLAMA_URL:-http://ollama:11434}
     ports:
       - "8000:8000"
     depends_on:
@@ -134,3 +155,4 @@ volumes:
   minio_data:
   qdrant_data:
   embedding_model_cache:
+  ollama_model_cache:
