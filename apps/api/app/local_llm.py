@@ -25,7 +25,12 @@ SYSTEM_INSTRUCTION = (
     "and no references. Otherwise return answer with a short answer and the keys of every "
     "source used. Respond only with JSON matching the requested schema. "
     "IMPORTANT: no_answer means answer is null and references is exactly []; "
-    "never list a source for no_answer, even if you inspected it."
+    "never list a source for no_answer, even if you inspected it. "
+    "Choose exactly one complete JSON shape: "
+    '{"outcome":"answer","answer":"a concise answer supported by the sources",'
+    '"references":["source-1"]} when the sources support the answer; or '
+    '{"outcome":"no_answer","answer":null,"references":[]} when they do not. '
+    'Never return outcome "answer" with a null or empty answer or an empty references array.'
 )
 
 

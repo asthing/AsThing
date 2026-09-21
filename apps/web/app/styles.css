@@ -168,6 +168,14 @@ input[type="file"] { border: 0; padding: 0; }
 .answer-result { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; margin-top: 24px; padding: 18px; }
 .answer-result h3 { font-size: 1.1rem; margin: 0 0 10px; }
 .answer-result p { line-height: 1.6; margin: 0; white-space: pre-wrap; }
+.answer-citations { border-top: 1px solid var(--line); margin-top: 18px; padding-top: 18px; }
+.answer-citations button { background: transparent; color: var(--accent); padding: 0; text-align: left; }
+.answer-citations button:focus-visible { outline: 3px solid rgba(23, 107, 76, 0.28); outline-offset: 3px; }
+.answer-citation-list { display: grid; gap: 10px; list-style: none; margin: 14px 0 0; padding: 0; }
+.answer-citation-list li { background: rgba(255, 255, 255, 0.48); border: 1px solid var(--line); border-radius: 8px; padding: 14px; }
+.answer-citation-list li > div { align-items: center; display: flex; gap: 10px; justify-content: space-between; }
+.answer-citation-list span { color: var(--muted); font-size: 0.85rem; font-weight: 700; text-transform: uppercase; }
+.answer-citation-list p { line-height: 1.6; margin: 12px 0 0; white-space: pre-wrap; }
 
 @media (max-width: 760px) {
   main { width: min(100% - 28px, 1080px); padding-top: 4vh; }

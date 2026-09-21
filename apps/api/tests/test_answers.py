@@ -12,6 +12,7 @@ from app.knowledge_bases import KnowledgeBase
 from app.local_llm import (
     OLLAMA_MODEL,
     OLLAMA_MODEL_DIGEST,
+    SYSTEM_INSTRUCTION,
     LocalAnswerModel,
     LocalModelError,
     LocalModelErrorCategory,
@@ -287,6 +288,13 @@ def test_local_model_checks_digest_and_sends_only_question_and_evidence():
         "question": "How?", "sources": [{"key": "source-1", "text": "Use the portal."}]
     }
     assert len(http.calls) == 2
+
+
+def test_system_instruction_requires_one_complete_valid_output_shape():
+    answer_shape = '"outcome":"answer","answer":"a concise answer supported by the sources"'
+    assert answer_shape in SYSTEM_INSTRUCTION
+    assert '"outcome":"no_answer","answer":null,"references":[]' in SYSTEM_INSTRUCTION
+    assert 'Never return outcome "answer" with a null or empty answer' in SYSTEM_INSTRUCTION
 
 
 def test_unavailable_or_timed_out_ollama_has_safe_error():

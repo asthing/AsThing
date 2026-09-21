@@ -12,6 +12,11 @@ import {
   type DocumentListItem,
 } from "./document-status";
 import { createAnswerRequestManager, type AnswerResponse } from "./answer-request";
+import {
+  citationDisclosureFor,
+  clearCitationDisclosure,
+  toggleCitationDisclosure,
+} from "./citation-disclosure";
 import { createSourceSearchRequestManager, type SourceSearchResponse } from "./source-search";
 
 type KnowledgeBase = {
@@ -63,6 +68,7 @@ function SourceSearchPanel({ knowledgeBaseId }: { knowledgeBaseId: string }) {
   const [sourceSearchError, setSourceSearchError] = useState<string | null>(null);
   const [isSearchingSources, setIsSearchingSources] = useState(false);
   const [answerResponse, setAnswerResponse] = useState<AnswerResponse | null>(null);
+  const [citationDisclosure, setCitationDisclosure] = useState(clearCitationDisclosure);
   const [answerError, setAnswerError] = useState<string | null>(null);
   const [isGeneratingAnswer, setIsGeneratingAnswer] = useState(false);
   const sourceSearchRequests = useRef(createSourceSearchRequestManager());
@@ -131,8 +137,9 @@ function SourceSearchPanel({ knowledgeBaseId }: { knowledgeBaseId: string }) {
   async function askForAnswer(retry = false) {
     if (isSearchingSources || isGeneratingAnswer) return;
     setAnswerError(null);
+    setAnswerResponse(null);
+    setCitationDisclosure(clearCitationDisclosure());
     if (!retry) {
-      setAnswerResponse(null);
       setSourceSearchResponse(null);
       setSourceSearchError(null);
     }
@@ -146,6 +153,7 @@ function SourceSearchPanel({ knowledgeBaseId }: { knowledgeBaseId: string }) {
       if (requestResult.error) throw requestResult.error;
       if (!requestResult.response) throw new Error("Answer data is unavailable. Please try again.");
       setAnswerResponse(requestResult.response);
+      setCitationDisclosure(citationDisclosureFor(requestResult.response));
     } catch (error: unknown) {
       if (requestResult && !requestResult.current) return;
       setAnswerError(
@@ -196,6 +204,36 @@ function SourceSearchPanel({ knowledgeBaseId }: { knowledgeBaseId: string }) {
         <div className="answer-result" aria-live="polite">
           <h3>Answer</h3>
           <p>{answerResponse.answer}</p>
+          {citationDisclosure.references.length > 0 && (
+            <section className="answer-citations" aria-label="Sources used for this answer">
+              <button
+                type="button"
+                aria-controls="answer-citation-list"
+                aria-expanded={citationDisclosure.isExpanded}
+                onClick={() => setCitationDisclosure(toggleCitationDisclosure)}
+              >
+                Sources used for this answer ({citationDisclosure.references.length})
+              </button>
+              <div
+                id="answer-citation-list"
+                role="region"
+                aria-label="Sources used for this answer"
+                hidden={!citationDisclosure.isExpanded}
+              >
+                <ul className="answer-citation-list">
+                  {citationDisclosure.references.map((reference) => (
+                    <li key={reference.reference_key}>
+                      <div>
+                        <strong>{reference.source_filename}</strong>
+                        <span>{reference.file_type.toUpperCase()}</span>
+                      </div>
+                      <p>{reference.excerpt}</p>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </section>
+          )}
         </div>
       )}
 
