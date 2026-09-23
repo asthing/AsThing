@@ -48,6 +48,7 @@ NO_READY_MESSAGE = "Documents must finish processing before they can answer ques
 NO_EVIDENCE_MESSAGE = (
     "The available sources do not contain enough information to answer this question."
 )
+MAX_ANSWER_CONTEXT_CHUNKS = 1
 
 
 class AnswerService:
@@ -70,9 +71,10 @@ class AnswerService:
             )
             return self._no_answer(reason)
 
+        context_chunks = evidence.chunks[:MAX_ANSWER_CONTEXT_CHUNKS]
         by_key = {
             f"source-{index}": chunk
-            for index, chunk in enumerate(evidence.chunks, start=1)
+            for index, chunk in enumerate(context_chunks, start=1)
         }
         decision = self.model.generate(
             question.strip(),

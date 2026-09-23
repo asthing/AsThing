@@ -176,6 +176,26 @@ def test_grounded_answer_uses_only_selected_ready_postgres_chunks_and_public_ref
     assert str(foreign) not in str(response.json())
 
 
+def test_answer_uses_only_the_highest_ranked_chunk_as_local_model_context():
+    kb_id = knowledge_base()
+    highest_ranked = chunk(kb_id, "relevant.txt", "The relevant source supports this answer.")
+    lower_ranked = chunk(kb_id, "unrelated.txt", "This source is not about the question.")
+    answer_service = service(
+        [
+            VectorSearchHit(highest_ranked, 0.90),
+            VectorSearchHit(lower_ranked, 0.50),
+        ],
+        ModelDecision(outcome="answer", answer="The relevant answer.", references=["source-1"]),
+    )
+
+    response = answer_service.answer(kb_id, "What is the relevant answer?")
+
+    assert response.outcome == "answer"
+    assert [(source.key, source.content) for source in answer_service.model.calls[0][1]] == [
+        ("source-1", "The relevant source supports this answer."),
+    ]
+
+
 def test_explicit_model_no_answer_and_unknown_reference():
     kb_id = knowledge_base()
     ready = chunk(kb_id, "policy.txt", "Leave is requested in the HR portal.")
