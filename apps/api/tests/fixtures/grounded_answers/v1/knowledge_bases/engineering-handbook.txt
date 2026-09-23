@@ -1,0 +1,4 @@
+Release policy: automated checks must pass before a release.
+Service owner: the platform team owns the deployment service.
+Retention: deployment logs are retained for 30 days.
+Escalation: notify the on-call engineer for a failed production deployment.

@@ -1,0 +1,4 @@
+The catalog service exposes its health endpoint at /health.
+The catalog service retries a transient inventory request three times.
+Architecture review notes are stored in the design registry.
+The maintenance window begins at 02:00 UTC on Sundays.

@@ -1,0 +1,268 @@
+{
+  "schema_version": 1,
+  "knowledge_bases": [
+    {
+      "id": "engineering-handbook",
+      "documents": [
+        {
+          "filename": "engineering-handbook.txt",
+          "path": "knowledge_bases/engineering-handbook.txt",
+          "status": "Ready"
+        }
+      ]
+    },
+    {
+      "id": "platform-guide",
+      "documents": [
+        {
+          "filename": "platform-guide.txt",
+          "path": "knowledge_bases/platform-guide.txt",
+          "status": "Ready"
+        }
+      ]
+    },
+    {
+      "id": "isolation-alpha",
+      "documents": [
+        {
+          "filename": "isolation-alpha.txt",
+          "path": "knowledge_bases/isolation-alpha.txt",
+          "status": "Ready"
+        }
+      ]
+    },
+    {
+      "id": "isolation-beta",
+      "documents": [
+        {
+          "filename": "isolation-beta.txt",
+          "path": "knowledge_bases/isolation-beta.txt",
+          "status": "Ready"
+        }
+      ]
+    },
+    {
+      "id": "unavailable-evidence",
+      "documents": [
+        {
+          "filename": "unavailable-uploaded.txt",
+          "path": "knowledge_bases/unavailable-uploaded.txt",
+          "status": "Uploaded"
+        },
+        {
+          "filename": "unavailable-failed.txt",
+          "path": "knowledge_bases/unavailable-failed.txt",
+          "status": "Failed"
+        }
+      ]
+    }
+  ],
+  "cases": [
+    {
+      "id": "direct-evidence-001",
+      "split": "calibration",
+      "category": "direct_evidence",
+      "knowledge_base": "engineering-handbook",
+      "question": "What must happen before a release?",
+      "expected_outcome": "answer",
+      "expected_source_filename": "engineering-handbook.txt",
+      "expected_canonical_fact": "automated checks must pass before a release"
+    },
+    {
+      "id": "direct-evidence-002",
+      "split": "calibration",
+      "category": "direct_evidence",
+      "knowledge_base": "engineering-handbook",
+      "question": "Which team owns the deployment service?",
+      "expected_outcome": "answer",
+      "expected_source_filename": "engineering-handbook.txt",
+      "expected_canonical_fact": "the platform team owns the deployment service"
+    },
+    {
+      "id": "direct-evidence-003",
+      "split": "calibration",
+      "category": "direct_evidence",
+      "knowledge_base": "platform-guide",
+      "question": "What is the catalog service health endpoint?",
+      "expected_outcome": "answer",
+      "expected_source_filename": "platform-guide.txt",
+      "expected_canonical_fact": "health endpoint at /health"
+    },
+    {
+      "id": "direct-evidence-004",
+      "split": "calibration",
+      "category": "direct_evidence",
+      "knowledge_base": "platform-guide",
+      "question": "How many times does the catalog service retry a transient inventory request?",
+      "expected_outcome": "answer",
+      "expected_source_filename": "platform-guide.txt",
+      "expected_canonical_fact": "retries a transient inventory request three times"
+    },
+    {
+      "id": "paraphrased-evidence-001",
+      "split": "calibration",
+      "category": "paraphrased_evidence",
+      "knowledge_base": "engineering-handbook",
+      "question": "Who looks after deployments?",
+      "expected_outcome": "answer",
+      "expected_source_filename": "engineering-handbook.txt",
+      "expected_canonical_fact": "the platform team owns the deployment service"
+    },
+    {
+      "id": "paraphrased-evidence-002",
+      "split": "calibration",
+      "category": "paraphrased_evidence",
+      "knowledge_base": "platform-guide",
+      "question": "How many attempts follow a temporary inventory problem?",
+      "expected_outcome": "answer",
+      "expected_source_filename": "platform-guide.txt",
+      "expected_canonical_fact": "retries a transient inventory request three times"
+    },
+    {
+      "id": "no-evidence-001",
+      "split": "calibration",
+      "category": "no_supporting_evidence",
+      "knowledge_base": "engineering-handbook",
+      "question": "Which protocol encrypts client data?",
+      "expected_outcome": "no_answer"
+    },
+    {
+      "id": "no-evidence-002",
+      "split": "calibration",
+      "category": "no_supporting_evidence",
+      "knowledge_base": "platform-guide",
+      "question": "Who approves supplier invoices?",
+      "expected_outcome": "no_answer"
+    },
+    {
+      "id": "isolation-001",
+      "split": "calibration",
+      "category": "knowledge_base_isolation",
+      "knowledge_base": "isolation-alpha",
+      "question": "Which workspace uses the Harbor deployment policy?",
+      "expected_outcome": "no_answer",
+      "outside_matching_evidence": {
+        "knowledge_base": "isolation-beta",
+        "source_filename": "isolation-beta.txt",
+        "canonical_fact": "The Beta workspace uses the Harbor deployment policy"
+      }
+    },
+    {
+      "id": "unavailable-001",
+      "split": "calibration",
+      "category": "non_ready_unavailable",
+      "knowledge_base": "unavailable-evidence",
+      "question": "Which retention policy is used by the uploaded archive?",
+      "expected_outcome": "no_answer",
+      "unavailable_matching_evidence": {
+        "knowledge_base": "unavailable-evidence",
+        "source_filename": "unavailable-uploaded.txt",
+        "status": "Uploaded",
+        "canonical_fact": "The uploaded archive uses the Quartz retention policy"
+      }
+    },
+    {
+      "id": "direct-evidence-005",
+      "split": "holdout",
+      "category": "direct_evidence",
+      "knowledge_base": "engineering-handbook",
+      "question": "How long are deployment logs retained?",
+      "expected_outcome": "answer",
+      "expected_source_filename": "engineering-handbook.txt",
+      "expected_canonical_fact": "deployment logs are retained for 30 days"
+    },
+    {
+      "id": "direct-evidence-006",
+      "split": "holdout",
+      "category": "direct_evidence",
+      "knowledge_base": "engineering-handbook",
+      "question": "Who should be notified about a failed production deployment?",
+      "expected_outcome": "answer",
+      "expected_source_filename": "engineering-handbook.txt",
+      "expected_canonical_fact": "notify the on-call engineer"
+    },
+    {
+      "id": "direct-evidence-007",
+      "split": "holdout",
+      "category": "direct_evidence",
+      "knowledge_base": "platform-guide",
+      "question": "Where are architecture review notes stored?",
+      "expected_outcome": "answer",
+      "expected_source_filename": "platform-guide.txt",
+      "expected_canonical_fact": "Architecture review notes are stored in the design registry"
+    },
+    {
+      "id": "direct-evidence-008",
+      "split": "holdout",
+      "category": "direct_evidence",
+      "knowledge_base": "platform-guide",
+      "question": "When does the maintenance window begin?",
+      "expected_outcome": "answer",
+      "expected_source_filename": "platform-guide.txt",
+      "expected_canonical_fact": "maintenance window begins at 02:00 UTC on Sundays"
+    },
+    {
+      "id": "paraphrased-evidence-003",
+      "split": "holdout",
+      "category": "paraphrased_evidence",
+      "knowledge_base": "engineering-handbook",
+      "question": "For how long are deployment records kept?",
+      "expected_outcome": "answer",
+      "expected_source_filename": "engineering-handbook.txt",
+      "expected_canonical_fact": "deployment logs are retained for 30 days"
+    },
+    {
+      "id": "paraphrased-evidence-004",
+      "split": "holdout",
+      "category": "paraphrased_evidence",
+      "knowledge_base": "platform-guide",
+      "question": "When does regular upkeep start?",
+      "expected_outcome": "answer",
+      "expected_source_filename": "platform-guide.txt",
+      "expected_canonical_fact": "maintenance window begins at 02:00 UTC on Sundays"
+    },
+    {
+      "id": "no-evidence-003",
+      "split": "holdout",
+      "category": "no_supporting_evidence",
+      "knowledge_base": "engineering-handbook",
+      "question": "What is the cafeteria schedule?",
+      "expected_outcome": "no_answer"
+    },
+    {
+      "id": "no-evidence-004",
+      "split": "holdout",
+      "category": "no_supporting_evidence",
+      "knowledge_base": "platform-guide",
+      "question": "Which database stores customer records?",
+      "expected_outcome": "no_answer"
+    },
+    {
+      "id": "isolation-002",
+      "split": "holdout",
+      "category": "knowledge_base_isolation",
+      "knowledge_base": "isolation-beta",
+      "question": "Which review contact is the architecture desk?",
+      "expected_outcome": "no_answer",
+      "outside_matching_evidence": {
+        "knowledge_base": "isolation-alpha",
+        "source_filename": "isolation-alpha.txt",
+        "canonical_fact": "The Alpha workspace review contact is the architecture desk"
+      }
+    },
+    {
+      "id": "unavailable-002",
+      "split": "holdout",
+      "category": "non_ready_unavailable",
+      "knowledge_base": "unavailable-evidence",
+      "question": "Which retention policy is used by the failed archive?",
+      "expected_outcome": "no_answer",
+      "unavailable_matching_evidence": {
+        "knowledge_base": "unavailable-evidence",
+        "source_filename": "unavailable-failed.txt",
+        "status": "Failed",
+        "canonical_fact": "The failed archive uses the Saffron retention policy"
+      }
+    }
+  ]
+}

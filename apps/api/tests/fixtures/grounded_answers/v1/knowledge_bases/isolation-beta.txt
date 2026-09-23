@@ -1,0 +1,2 @@
+The Beta workspace uses the Harbor deployment policy.
+The Beta workspace review contact is the platform council.

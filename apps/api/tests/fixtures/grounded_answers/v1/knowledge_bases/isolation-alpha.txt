@@ -1,0 +1,2 @@
+The Alpha workspace uses the Cedar deployment policy.
+The Alpha workspace review contact is the architecture desk.
