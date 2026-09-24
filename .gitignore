@@ -23,5 +23,5 @@ npm-debug.log*
 .DS_Store
 Thumbs.db
 
-# Local data
+# Local data and generated evaluation reports
 .data/

@@ -56,6 +56,37 @@ The API requires Ollama tag `qwen2.5:3b-instruct-q4_K_M` with manifest digest `s
 
 The knowledge-base question form offers **Get answer**. `POST /knowledge-bases/{knowledge_base_id}/answers` accepts only a question. The server retrieves up to five Ready chunks in that knowledge base and asks the local model to answer from those chunks. The response is either an answer with source references, or an explicit `no_answer`. A successful answer lets the user expand its response-scoped sources to inspect the filename, file type, and approved excerpt. No answers, prompts, or conversation history are stored.
 
+## Grounded-answer evaluation
+
+Run the committed, sanitized `grounded_answers/v1` fixtures against an isolated local stack with:
+
+```powershell
+.\scripts\run-grounded-answer-evaluation.ps1
+```
+
+The script creates a unique Compose project with no published ports, runs evaluator traffic only on that project's network, and removes only its disposable PostgreSQL, MinIO, Qdrant, and Redis volumes when it finishes. It preserves the dedicated `asthing_evaluation_embedding_model_cache` and `asthing_evaluation_ollama_model_cache` volumes so model artifacts are never read from or written to the default stack caches. Reports are written beneath the ignored `.data/grounded-answer-evaluations/<timestamp>/` directory.
+
+Evaluation never downloads a model. Prewarm the dedicated caches once before the first run:
+
+```powershell
+docker volume create asthing_evaluation_embedding_model_cache
+docker volume create asthing_evaluation_ollama_model_cache
+docker compose -p asthing-eval-prewarm -f docker-compose.yml -f docker-compose.evaluation.yml up -d ollama
+docker compose -p asthing-eval-prewarm -f docker-compose.yml -f docker-compose.evaluation.yml exec ollama ollama pull qwen2.5:3b-instruct-q4_K_M
+docker compose -p asthing-eval-prewarm -f docker-compose.yml -f docker-compose.evaluation.yml run --rm --no-deps evaluator python -m app.grounded_answer_evaluation --prewarm-embedding-cache
+docker compose -p asthing-eval-prewarm -f docker-compose.yml -f docker-compose.evaluation.yml down
+```
+
+The evaluator verifies the pinned Qwen digest and BGE-M3 revision before fixture seeding. During an evaluation, the API and worker force Hugging Face offline mode, so cache resolution cannot download or query model metadata. Its cold observation is the first generation after startup with the model already cached; it does not measure model-download time. The report records safe result classifications and aggregate quality metrics only, never prompts, questions, source text, identifiers, vectors, URLs, or raw errors.
+
+Inspect the newest local result without starting or changing the default stack:
+
+```powershell
+Get-ChildItem .data\grounded-answer-evaluations -Directory | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+Get-Content .data\grounded-answer-evaluations\<run-id>\summary.md
+Get-Content .data\grounded-answer-evaluations\<run-id>\report.json
+```
+
 Stop the stack with `docker compose down`. Add `--volumes` only when you intentionally want to delete local PostgreSQL, Redis, MinIO, Qdrant, and embedding-model-cache data.
 
 ## Repository layout
