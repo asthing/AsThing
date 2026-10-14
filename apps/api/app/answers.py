@@ -4,7 +4,7 @@ from enum import StrEnum
 from functools import lru_cache
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Body, Depends, HTTPException, status
 from pydantic import BaseModel
 
 from app.local_llm import LocalAnswerModel, LocalModelError, LocalModelErrorCategory, PromptSource
@@ -13,7 +13,6 @@ from app.retrieval import (
     RetrievalDependencyError,
     RetrievalOutcome,
     SourceRetrievalService,
-    SourceSearchRequest,
     _excerpt,
     get_source_retrieval_service,
 )
@@ -49,6 +48,39 @@ NO_EVIDENCE_MESSAGE = (
     "The available sources do not contain enough information to answer this question."
 )
 MAX_ANSWER_CONTEXT_CHUNKS = 1
+MAX_ANSWER_QUESTION_CHARACTERS = 1_000
+BLANK_QUESTION_MESSAGE = "Enter a question before searching."
+QUESTION_TOO_LONG_MESSAGE = "Question must be 1,000 characters or fewer."
+
+
+def validate_answer_question(payload: object = Body(...)) -> str:
+    """Return a bounded question without reflecting invalid request content."""
+
+    if not isinstance(payload, dict) or set(payload) != {"question"}:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail=BLANK_QUESTION_MESSAGE,
+        )
+
+    question = payload["question"]
+    if not isinstance(question, str):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail=BLANK_QUESTION_MESSAGE,
+        )
+
+    question = question.strip()
+    if not question:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail=BLANK_QUESTION_MESSAGE,
+        )
+    if len(question) > MAX_ANSWER_QUESTION_CHARACTERS:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail=QUESTION_TOO_LONG_MESSAGE,
+        )
+    return question
 
 
 class AnswerService:
@@ -127,11 +159,11 @@ router = APIRouter(prefix="/knowledge-bases", tags=["answers"])
 @router.post("/{knowledge_base_id}/answers", response_model=AnswerResponse)
 def answer_question(
     knowledge_base_id: UUID,
-    payload: SourceSearchRequest,
+    question: str = Depends(validate_answer_question),
     service: AnswerService = Depends(get_answer_service),
 ) -> AnswerResponse:
     try:
-        return service.answer(knowledge_base_id, payload.question)
+        return service.answer(knowledge_base_id, question)
     except KnowledgeBaseNotFoundError:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

@@ -4,7 +4,7 @@ from uuid import UUID, uuid4
 import pytest
 import requests
 
-from app.answers import AnswerService, get_answer_service
+from app.answers import AnswerService, NoAnswerReason, get_answer_service
 from app.database import SessionLocal
 from app.document_models import Document, DocumentChunk, DocumentStatus
 from app.embeddings import EMBEDDING_DIMENSION, EmbeddingBatch, EmbeddingModelMetadata
@@ -106,14 +106,45 @@ def service(hits=(), decision=None, error=None):
     )
 
 
-def test_answer_endpoint_rejects_blank_and_unknown_kb(client):
+def test_answer_endpoint_validates_bounded_questions_before_calling_the_service(client):
     kb_id = knowledge_base()
-    blank = client.post(f"/knowledge-bases/{kb_id}/answers", json={"question": "   "})
-    missing = client.post(f"/knowledge-bases/{uuid4()}/answers", json={"question": "Why?"})
+    calls: list[str] = []
+
+    class EndpointAnswerService:
+        def answer(self, _knowledge_base_id: UUID, question: str):
+            calls.append(question)
+            return AnswerService._no_answer(NoAnswerReason.INSUFFICIENT_EVIDENCE)
+
+    app.dependency_overrides[get_answer_service] = EndpointAnswerService
+    try:
+        exact_limit = client.post(
+            f"/knowledge-bases/{kb_id}/answers", json={"question": "x" * 1_000}
+        )
+        padded_limit = client.post(
+            f"/knowledge-bases/{kb_id}/answers", json={"question": f"  {'y' * 1_000}  "}
+        )
+        blank = client.post(f"/knowledge-bases/{kb_id}/answers", json={"question": "   "})
+        secret_question = "private-question-" + "z" * (1_001 - len("private-question-"))
+        over_limit = client.post(
+            f"/knowledge-bases/{kb_id}/answers", json={"question": secret_question}
+        )
+    finally:
+        app.dependency_overrides.pop(get_answer_service, None)
+
+    assert exact_limit.status_code == padded_limit.status_code == 200
     assert blank.status_code == 422
-    assert "Enter a question" in str(blank.json())
-    assert missing.status_code == 404
-    assert missing.json() == {"detail": "Knowledge base not found."}
+    assert blank.json() == {"detail": "Enter a question before searching."}
+    assert over_limit.status_code == 422
+    assert over_limit.json() == {"detail": "Question must be 1,000 characters or fewer."}
+    assert secret_question not in over_limit.text
+    assert len(secret_question) == 1_001
+    assert calls == ["x" * 1_000, "y" * 1_000]
+
+
+def test_answer_endpoint_returns_404_for_an_unknown_knowledge_base(client):
+    response = client.post(f"/knowledge-bases/{uuid4()}/answers", json={"question": "Why?"})
+    assert response.status_code == 404
+    assert response.json() == {"detail": "Knowledge base not found."}
 
 
 def test_no_ready_and_no_relevant_evidence_return_no_answer_without_model_call():
@@ -245,6 +276,53 @@ def test_retrieval_and_model_failures_are_safe_503(client):
         assert response.json() == {
             "detail": "Answer generation is temporarily unavailable. Please try again."
         }
+
+
+@pytest.mark.parametrize(
+    "model_output",
+    [
+        "malformed-model-output-secret",
+        json.dumps({"outcome": "answer", "answer": "Use the portal."}),
+        json.dumps(
+            {"outcome": "answer", "answer": "Use the portal.", "references": [None]}
+        ),
+        json.dumps(
+            {"outcome": "answer", "answer": "Use the portal.", "references": ["source-2"]}
+        ),
+        json.dumps(
+            {
+                "outcome": "answer",
+                "answer": "Use the portal.",
+                "references": ["unsupported-key"],
+            }
+        ),
+    ],
+    ids=["malformed-output", "missing-key", "malformed-key", "unknown-key", "unsupported-key"],
+)
+def test_answer_endpoint_maps_invalid_model_output_to_a_safe_503(client, model_output):
+    kb_id = knowledge_base()
+    ready = chunk(kb_id, "policy.txt", "source-text-secret")
+    answer_service = AnswerService(
+        retriever=SourceRetrievalService(
+            embedding_service=Embeddings(),
+            vector_store=Vectors([VectorSearchHit(ready, 0.9)]),
+        ),
+        model=LocalAnswerModel(http_client=HttpClient(model_output)),
+    )
+    app.dependency_overrides[get_answer_service] = lambda: answer_service
+    try:
+        response = client.post(
+            f"/knowledge-bases/{kb_id}/answers", json={"question": "question-secret"}
+        )
+    finally:
+        app.dependency_overrides.pop(get_answer_service, None)
+
+    assert response.status_code == 503
+    assert response.json() == {
+        "detail": "Answer generation is temporarily unavailable. Please try again."
+    }
+    for unsafe_value in ("source-text-secret", "question-secret", "malformed-model-output-secret"):
+        assert unsafe_value not in response.text
 
 
 class HttpResponse:

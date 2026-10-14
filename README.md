@@ -54,7 +54,7 @@ docker compose exec ollama ollama pull qwen2.5:3b-instruct-q4_K_M
 
 The API requires Ollama tag `qwen2.5:3b-instruct-q4_K_M` with manifest digest `sha256:357c53fb659c5076de1d65ccb0b397446227b71a42be9d1603d46168015c9e4b`. It verifies this digest before each generation and rejects a changed or missing model. The named `ollama_model_cache` volume preserves the explicit download across restarts. Ollama is internal to Docker Compose, is limited to one active generation, and does not gate API startup. Its HTTP connection timeout is 2 seconds and generation read timeout is 180 seconds.
 
-The knowledge-base question form offers **Get answer**. `POST /knowledge-bases/{knowledge_base_id}/answers` accepts only a question. The server retrieves up to five Ready chunks in that knowledge base and asks the local model to answer from those chunks. The response is either an answer with source references, or an explicit `no_answer`. A successful answer lets the user expand its response-scoped sources to inspect the filename, file type, and approved excerpt. No answers, prompts, or conversation history are stored.
+The knowledge-base question form offers **Get answer**. `POST /knowledge-bases/{knowledge_base_id}/answers` accepts one trimmed question of up to 1,000 characters. The server retrieves up to five Ready chunks in that knowledge base and asks the local model to answer from those chunks. The response is either an answer with source references, or an explicit `no_answer`. A successful answer lets the user expand its response-scoped sources to inspect the filename, file type, and approved excerpt. No answers, prompts, or conversation history are stored.
 
 ## Grounded-answer evaluation
 
