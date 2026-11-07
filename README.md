@@ -87,6 +87,10 @@ Get-Content .data\grounded-answer-evaluations\<run-id>\summary.md
 Get-Content .data\grounded-answer-evaluations\<run-id>\report.json
 ```
 
+For opt-in diagnosis of the 12 answerable cases without changing answer behavior, run
+`.\scripts\run-grounded-answer-diagnostic.ps1`. See [diagnostic instructions](docs/grounded-answer-diagnostics.md)
+for safe classifications, isolated cleanup, and the previously inspected v1 benchmark limitations.
+
 Stop the stack with `docker compose down`. Add `--volumes` only when you intentionally want to delete local PostgreSQL, Redis, MinIO, Qdrant, and embedding-model-cache data.
 
 ## Repository layout

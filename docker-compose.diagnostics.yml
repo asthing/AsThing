@@ -1,0 +1,23 @@
+# Diagnostic-only additions; the established evaluation configuration stays unchanged.
+services:
+  evaluator:
+    command:
+      - python
+      - -m
+      - app.grounded_answer_diagnostic
+      - --manifest
+      - /evaluation-fixtures/v1/manifest.json
+      - --output-directory
+      - /evaluation-output/${EVALUATION_RUN_ID}
+      - --embedding-cache
+      - /evaluation-embedding-cache
+    environment:
+      DIAGNOSTIC_ISOLATED: "1"
+      HF_HUB_OFFLINE: "1"
+      TRANSFORMERS_OFFLINE: "1"
+      QDRANT_URL: http://qdrant:6333
+      OLLAMA_URL: http://ollama:11434
+    volumes:
+      - ./.data/grounded-answer-diagnostics:/evaluation-output
+    logging:
+      driver: none
