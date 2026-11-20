@@ -303,7 +303,7 @@ def test_each_categorized_failure_starts_compensation(error, expected_code) -> N
     assert job.failure_message == FAILURE_MESSAGES[expected_code]
 
 
-def test_partial_vector_failure_is_compensated_before_failed_status() -> None:
+def test_partial_vector_failure_cleans_visible_points_but_retains_unresolved_write() -> None:
     document_id, job_id = create_document_and_job()
     vector_store = PartialFailureVectorStore(document_id, job_id)
     processor = StoredDocumentProcessor(
@@ -327,10 +327,11 @@ def test_partial_vector_failure_is_compensated_before_failed_status() -> None:
         and chunk_count > 0
         for status, job_state, chunk_count in vector_store.cleanup_state_observations
     )
-    assert chunks == []
-    assert document.status == DocumentStatus.FAILED
-    assert document.failure_code == ProcessingFailureCode.VECTOR_PERSISTENCE_FAILED
-    assert job.state == ProcessingJobState.COMPLETED
+    assert chunks
+    assert document.status == DocumentStatus.PROCESSING
+    assert document.failure_code is None
+    assert job.state == ProcessingJobState.CLEANUP_PENDING
+    assert job.vector_write_token is not None
     assert job.failure_code == ProcessingFailureCode.VECTOR_PERSISTENCE_FAILED
 
 

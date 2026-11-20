@@ -8,6 +8,7 @@ from sqlalchemy import delete, func, select, update
 from sqlalchemy.exc import SQLAlchemyError
 
 from app.database import SessionLocal
+from app.document_coordination import lock_document
 from app.document_models import (
     Document,
     DocumentChunk,
@@ -132,6 +133,7 @@ def complete_processing_success(
                 DocumentProcessingJob.attempt_count == claim.attempt_count,
                 DocumentProcessingJob.lease_expires_at.is_not(None),
                 DocumentProcessingJob.lease_expires_at > completion_time,
+                DocumentProcessingJob.vector_write_token.is_(None),
             )
             .values(
                 state=ProcessingJobState.COMPLETED,
@@ -298,6 +300,8 @@ def complete_processing_cleanup(
     completion_time = now if now is not None else utc_now()
     session = session_factory()
     try:
+        # Explicit job-first/document-second order, matching writes and permanent deletion.
+        lock_document(session, cleanup.document_id)
         guard = session.execute(
             select(DocumentProcessingJob.id)
             .join(Document, Document.id == DocumentProcessingJob.document_id)
@@ -306,10 +310,10 @@ def complete_processing_cleanup(
                 DocumentProcessingJob.document_id == cleanup.document_id,
                 DocumentProcessingJob.state == ProcessingJobState.CLEANUP_PENDING,
                 DocumentProcessingJob.attempt_count == cleanup.attempt_count,
+                DocumentProcessingJob.vector_write_token.is_(None),
                 Document.status == DocumentStatus.PROCESSING,
                 Document.processing_attempt_count == cleanup.attempt_count,
             )
-            .with_for_update()
         ).one_or_none()
         if guard is None:
             session.rollback()
@@ -340,6 +344,7 @@ def complete_processing_cleanup(
                 DocumentProcessingJob.id == cleanup.job_id,
                 DocumentProcessingJob.state == ProcessingJobState.CLEANUP_PENDING,
                 DocumentProcessingJob.attempt_count == cleanup.attempt_count,
+                DocumentProcessingJob.vector_write_token.is_(None),
             )
             .values(
                 state=ProcessingJobState.COMPLETED,
@@ -447,6 +452,7 @@ def _is_terminal_success(session, claim: ClaimedProcessingJob) -> bool:
                 DocumentProcessingJob.document_id == claim.document_id,
                 DocumentProcessingJob.state == ProcessingJobState.COMPLETED,
                 DocumentProcessingJob.attempt_count == claim.attempt_count,
+                DocumentProcessingJob.vector_write_token.is_(None),
                 Document.status == DocumentStatus.READY,
                 Document.processing_attempt_count == claim.attempt_count,
             )
@@ -483,6 +489,7 @@ def _terminal_failure_matches(
                     DocumentProcessingJob.document_id == cleanup.document_id,
                     DocumentProcessingJob.state == ProcessingJobState.COMPLETED,
                     DocumentProcessingJob.attempt_count == cleanup.attempt_count,
+                    DocumentProcessingJob.vector_write_token.is_(None),
                     DocumentProcessingJob.failure_code == cleanup.failure.code,
                     Document.status == DocumentStatus.FAILED,
                     Document.processing_attempt_count == cleanup.attempt_count,

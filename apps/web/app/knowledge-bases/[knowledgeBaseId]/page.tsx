@@ -1,7 +1,15 @@
 "use client";
 
 import Link from "next/link";
-import { ChangeEvent, FormEvent, useCallback, useEffect, useRef, useState } from "react";
+import {
+  ChangeEvent,
+  FormEvent,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { useParams } from "next/navigation";
 
 import {
@@ -11,13 +19,21 @@ import {
   startDocumentPolling,
   type DocumentListItem,
 } from "./document-status";
-import { createAnswerRequestManager, type AnswerResponse } from "./answer-request";
+import {
+  createAnswerRequestManager,
+  type AnswerResponse,
+} from "./answer-request";
 import {
   citationDisclosureFor,
   clearCitationDisclosure,
   toggleCitationDisclosure,
 } from "./citation-disclosure";
-import { createSourceSearchRequestManager, type SourceSearchResponse } from "./source-search";
+import {
+  createSourceSearchRequestManager,
+  type SourceSearchResponse,
+} from "./source-search";
+import { DeleteConfirmation } from "../../components/delete-confirmation";
+import { createDocumentDeletionManager, deletionConfirmation } from "./document-deletion";
 
 type KnowledgeBase = {
   id: string;
@@ -56,7 +72,12 @@ function validateFile(file: File): string | null {
 
 async function errorMessage(response: Response): Promise<string> {
   const body: unknown = await response.json().catch(() => null);
-  if (body && typeof body === "object" && "detail" in body && typeof body.detail === "string") {
+  if (
+    body &&
+    typeof body === "object" &&
+    "detail" in body &&
+    typeof body.detail === "string"
+  ) {
     return body.detail;
   }
   return "Something went wrong. Please try again.";
@@ -64,28 +85,44 @@ async function errorMessage(response: Response): Promise<string> {
 
 function SourceSearchPanel({ knowledgeBaseId }: { knowledgeBaseId: string }) {
   const [question, setQuestion] = useState("");
-  const [sourceSearchResponse, setSourceSearchResponse] = useState<SourceSearchResponse | null>(null);
-  const [sourceSearchError, setSourceSearchError] = useState<string | null>(null);
+  const [sourceSearchResponse, setSourceSearchResponse] =
+    useState<SourceSearchResponse | null>(null);
+  const [sourceSearchError, setSourceSearchError] = useState<string | null>(
+    null,
+  );
   const [isSearchingSources, setIsSearchingSources] = useState(false);
-  const [answerResponse, setAnswerResponse] = useState<AnswerResponse | null>(null);
-  const [citationDisclosure, setCitationDisclosure] = useState(clearCitationDisclosure);
+  const [answerResponse, setAnswerResponse] = useState<AnswerResponse | null>(
+    null,
+  );
+  const [citationDisclosure, setCitationDisclosure] = useState(
+    clearCitationDisclosure,
+  );
   const [answerError, setAnswerError] = useState<string | null>(null);
   const [isGeneratingAnswer, setIsGeneratingAnswer] = useState(false);
   const sourceSearchRequests = useRef(createSourceSearchRequestManager());
   const answerRequests = useRef(createAnswerRequestManager());
 
-  useEffect(() => () => {
-    sourceSearchRequests.current.cancel();
-    answerRequests.current.cancel();
-  }, []);
+  useEffect(
+    () => () => {
+      sourceSearchRequests.current.cancel();
+      answerRequests.current.cancel();
+    },
+    [],
+  );
 
-  async function fetchSourceSearch(questionToSearch: string, signal: AbortSignal): Promise<unknown> {
-    const response = await fetch(`${apiUrl}/knowledge-bases/${knowledgeBaseId}/sources/search`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ question: questionToSearch }),
-      signal,
-    });
+  async function fetchSourceSearch(
+    questionToSearch: string,
+    signal: AbortSignal,
+  ): Promise<unknown> {
+    const response = await fetch(
+      `${apiUrl}/knowledge-bases/${knowledgeBaseId}/sources/search`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ question: questionToSearch }),
+        signal,
+      },
+    );
     if (!response.ok) throw new Error(await errorMessage(response));
     return response.json();
   }
@@ -103,15 +140,21 @@ function SourceSearchPanel({ knowledgeBaseId }: { knowledgeBaseId: string }) {
     try {
       requestResult = retry
         ? await sourceSearchRequests.current.retry(fetchSourceSearch)
-        : await sourceSearchRequests.current.submit(question, fetchSourceSearch);
+        : await sourceSearchRequests.current.submit(
+            question,
+            fetchSourceSearch,
+          );
       if (!requestResult.current) return;
       if (requestResult.error) throw requestResult.error;
-      if (!requestResult.response) throw new Error("Source search data is unavailable. Please try again.");
+      if (!requestResult.response)
+        throw new Error("Source search data is unavailable. Please try again.");
       setSourceSearchResponse(requestResult.response);
     } catch (error: unknown) {
       if (requestResult && !requestResult.current) return;
       const message =
-        error instanceof Error ? error.message : "Could not search source documents. Please try again.";
+        error instanceof Error
+          ? error.message
+          : "Could not search source documents. Please try again.";
       setSourceSearchError(message);
     } finally {
       if (!requestResult || requestResult.current) setIsSearchingSources(false);
@@ -123,13 +166,19 @@ function SourceSearchPanel({ knowledgeBaseId }: { knowledgeBaseId: string }) {
     void searchSources();
   }
 
-  async function fetchAnswer(questionToAsk: string, signal: AbortSignal): Promise<unknown> {
-    const response = await fetch(`${apiUrl}/knowledge-bases/${knowledgeBaseId}/answers`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ question: questionToAsk }),
-      signal,
-    });
+  async function fetchAnswer(
+    questionToAsk: string,
+    signal: AbortSignal,
+  ): Promise<unknown> {
+    const response = await fetch(
+      `${apiUrl}/knowledge-bases/${knowledgeBaseId}/answers`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ question: questionToAsk }),
+        signal,
+      },
+    );
     if (!response.ok) throw new Error(await errorMessage(response));
     return response.json();
   }
@@ -151,13 +200,16 @@ function SourceSearchPanel({ knowledgeBaseId }: { knowledgeBaseId: string }) {
         : await answerRequests.current.submit(question, fetchAnswer);
       if (!requestResult.current) return;
       if (requestResult.error) throw requestResult.error;
-      if (!requestResult.response) throw new Error("Answer data is unavailable. Please try again.");
+      if (!requestResult.response)
+        throw new Error("Answer data is unavailable. Please try again.");
       setAnswerResponse(requestResult.response);
       setCitationDisclosure(citationDisclosureFor(requestResult.response));
     } catch (error: unknown) {
       if (requestResult && !requestResult.current) return;
       setAnswerError(
-        error instanceof Error ? error.message : "Could not generate an answer. Please try again.",
+        error instanceof Error
+          ? error.message
+          : "Could not generate an answer. Please try again.",
       );
     } finally {
       if (!requestResult || requestResult.current) setIsGeneratingAnswer(false);
@@ -165,9 +217,14 @@ function SourceSearchPanel({ knowledgeBaseId }: { knowledgeBaseId: string }) {
   }
 
   return (
-    <section className="source-search-panel" aria-labelledby="source-search-title">
+    <section
+      className="source-search-panel"
+      aria-labelledby="source-search-title"
+    >
       <h2 id="source-search-title">Find relevant sources</h2>
-      <p className="muted">Searches only documents that are ready in this knowledge base.</p>
+      <p className="muted">
+        Searches only documents that are ready in this knowledge base.
+      </p>
       <form onSubmit={handleSourceSearch} noValidate>
         <label htmlFor="source-question">Question</label>
         <textarea
@@ -176,43 +233,70 @@ function SourceSearchPanel({ knowledgeBaseId }: { knowledgeBaseId: string }) {
           value={question}
           onChange={(event) => setQuestion(event.target.value)}
           disabled={isSearchingSources || isGeneratingAnswer}
-          aria-describedby={sourceSearchError ? "source-search-error" : answerError ? "answer-error" : undefined}
+          aria-describedby={
+            sourceSearchError
+              ? "source-search-error"
+              : answerError
+                ? "answer-error"
+                : undefined
+          }
         />
         <div className="upload-actions">
-          <button type="submit" disabled={isSearchingSources || isGeneratingAnswer}>
+          <button
+            type="submit"
+            disabled={isSearchingSources || isGeneratingAnswer}
+          >
             {isSearchingSources ? "Finding sources…" : "Find relevant sources"}
           </button>
-          <button type="button" onClick={() => void askForAnswer()} disabled={isSearchingSources || isGeneratingAnswer}>
+          <button
+            type="button"
+            onClick={() => void askForAnswer()}
+            disabled={isSearchingSources || isGeneratingAnswer}
+          >
             {isGeneratingAnswer ? "Generating answer…" : "Get answer"}
           </button>
         </div>
       </form>
 
-      {isGeneratingAnswer && <p className="muted" role="status">Generating an answer from this knowledge base…</p>}
+      {isGeneratingAnswer && (
+        <p className="muted" role="status">
+          Generating an answer from this knowledge base…
+        </p>
+      )}
       {answerError && (
         <div className="empty-state" id="answer-error" role="alert">
           <p>{answerError}</p>
-          <button type="button" onClick={() => void askForAnswer(true)} disabled={isGeneratingAnswer}>
+          <button
+            type="button"
+            onClick={() => void askForAnswer(true)}
+            disabled={isGeneratingAnswer}
+          >
             Retry answer
           </button>
         </div>
       )}
       {answerResponse?.outcome === "no_answer" && (
-        <div className="empty-state" role="status"><p>{answerResponse.message}</p></div>
+        <div className="empty-state" role="status">
+          <p>{answerResponse.message}</p>
+        </div>
       )}
       {answerResponse?.outcome === "answer" && (
         <div className="answer-result" aria-live="polite">
           <h3>Answer</h3>
           <p>{answerResponse.answer}</p>
           {citationDisclosure.references.length > 0 && (
-            <section className="answer-citations" aria-label="Sources used for this answer">
+            <section
+              className="answer-citations"
+              aria-label="Sources used for this answer"
+            >
               <button
                 type="button"
                 aria-controls="answer-citation-list"
                 aria-expanded={citationDisclosure.isExpanded}
                 onClick={() => setCitationDisclosure(toggleCitationDisclosure)}
               >
-                Sources used for this answer ({citationDisclosure.references.length})
+                Sources used for this answer (
+                {citationDisclosure.references.length})
               </button>
               <div
                 id="answer-citation-list"
@@ -237,11 +321,19 @@ function SourceSearchPanel({ knowledgeBaseId }: { knowledgeBaseId: string }) {
         </div>
       )}
 
-      {isSearchingSources && <p className="muted" role="status">Finding relevant sources…</p>}
+      {isSearchingSources && (
+        <p className="muted" role="status">
+          Finding relevant sources…
+        </p>
+      )}
       {sourceSearchError && (
         <div className="empty-state" id="source-search-error" role="alert">
           <p>{sourceSearchError}</p>
-          <button type="button" onClick={() => void searchSources(true)} disabled={isSearchingSources}>
+          <button
+            type="button"
+            onClick={() => void searchSources(true)}
+            disabled={isSearchingSources}
+          >
             Retry
           </button>
         </div>
@@ -275,7 +367,9 @@ function SourceSearchPanel({ knowledgeBaseId }: { knowledgeBaseId: string }) {
 
 export default function KnowledgeBasePage() {
   const { knowledgeBaseId } = useParams<{ knowledgeBaseId: string }>();
-  const [knowledgeBase, setKnowledgeBase] = useState<KnowledgeBase | null>(null);
+  const [knowledgeBase, setKnowledgeBase] = useState<KnowledgeBase | null>(
+    null,
+  );
   const [documents, setDocuments] = useState<DocumentListItem[]>([]);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -290,6 +384,29 @@ export default function KnowledgeBasePage() {
   const activeDocumentsRequest = useRef<AbortController | null>(null);
   const documentsRequestId = useRef(0);
   const pollingDocuments = useRef(documents);
+  const deletionRequests = useMemo(
+    () => createDocumentDeletionManager(knowledgeBaseId),
+    [knowledgeBaseId],
+  );
+  const [deletionTarget, setDeletionTarget] = useState<{
+    document: DocumentListItem;
+    requests: typeof deletionRequests;
+  } | null>(null);
+  // A selection belongs to this manager instance, not a subsequently visited KB.
+  const currentDeletionTarget = deletionTarget?.requests === deletionRequests
+    ? deletionTarget.document : null;
+  const [deletionActivity, setDeletionActivity] = useState<{
+    knowledgeBaseId: string;
+    documentId: string;
+    pending: boolean;
+    error: string | null;
+  } | null>(null);
+  const currentDeletion =
+    deletionActivity?.knowledgeBaseId === knowledgeBaseId
+      ? deletionActivity
+      : null;
+
+  useEffect(() => () => deletionRequests.cancel(), [deletionRequests]);
 
   const cancelDocumentsRequest = useCallback(() => {
     documentsRequestId.current += 1;
@@ -297,54 +414,78 @@ export default function KnowledgeBasePage() {
     activeDocumentsRequest.current = null;
   }, []);
 
-  const loadDocuments = useCallback(async ({ background = false } = {}): Promise<
-    DocumentListItem[] | null
-  > => {
-    activeDocumentsRequest.current?.abort();
-    const controller = new AbortController();
-    const requestId = documentsRequestId.current + 1;
-    documentsRequestId.current = requestId;
-    activeDocumentsRequest.current = controller;
-    if (!background) setIsDocumentsLoading(true);
-    setDocumentsError(null);
-    try {
-      const response = await fetch(`${apiUrl}/knowledge-bases/${knowledgeBaseId}/documents`, {
-        signal: controller.signal,
-      });
-      if (!response.ok) throw new Error(await errorMessage(response));
-      const loadedDocuments = parseAndSortDocuments(await response.json());
-      if (controller.signal.aborted || requestId !== documentsRequestId.current) return null;
-      setDocuments(loadedDocuments);
-      return loadedDocuments;
-    } catch (error: unknown) {
-      if (controller.signal.aborted || requestId !== documentsRequestId.current) return null;
-      const message =
-        error instanceof Error ? error.message : "Could not load the documents. Please try again.";
-      setDocumentsError(message);
-      return null;
-    } finally {
-      if (requestId === documentsRequestId.current) {
-        activeDocumentsRequest.current = null;
-        if (!background) setIsDocumentsLoading(false);
+  const loadDocuments = useCallback(
+    async ({ background = false } = {}): Promise<DocumentListItem[] | null> => {
+      activeDocumentsRequest.current?.abort();
+      const controller = new AbortController();
+      const requestId = documentsRequestId.current + 1;
+      documentsRequestId.current = requestId;
+      activeDocumentsRequest.current = controller;
+      if (!background) setIsDocumentsLoading(true);
+      setDocumentsError(null);
+      try {
+        const response = await fetch(
+          `${apiUrl}/knowledge-bases/${knowledgeBaseId}/documents`,
+          {
+            signal: controller.signal,
+          },
+        );
+        if (!response.ok) throw new Error(await errorMessage(response));
+        const loadedDocuments = deletionRequests.filterDocuments(
+          parseAndSortDocuments(await response.json()),
+        );
+        if (
+          controller.signal.aborted ||
+          requestId !== documentsRequestId.current
+        )
+          return null;
+        setDocuments(loadedDocuments);
+        return loadedDocuments;
+      } catch (error: unknown) {
+        if (
+          controller.signal.aborted ||
+          requestId !== documentsRequestId.current
+        )
+          return null;
+        const message =
+          error instanceof Error
+            ? error.message
+            : "Could not load the documents. Please try again.";
+        setDocumentsError(message);
+        return null;
+      } finally {
+        if (requestId === documentsRequestId.current) {
+          activeDocumentsRequest.current = null;
+          if (!background) setIsDocumentsLoading(false);
+        }
       }
-    }
-  }, [knowledgeBaseId]);
+    },
+    [deletionRequests, knowledgeBaseId],
+  );
 
   useEffect(() => {
     const controller = new AbortController();
 
     async function loadKnowledgeBase() {
       try {
-        const response = await fetch(`${apiUrl}/knowledge-bases/${knowledgeBaseId}`, {
-          signal: controller.signal,
-        });
+        const response = await fetch(
+          `${apiUrl}/knowledge-bases/${knowledgeBaseId}`,
+          {
+            signal: controller.signal,
+          },
+        );
         if (!response.ok) throw new Error(await errorMessage(response));
         setKnowledgeBase((await response.json()) as KnowledgeBase);
         setPageError(null);
         await loadDocuments();
       } catch (error: unknown) {
-        if (error instanceof DOMException && error.name === "AbortError") return;
-        setPageError(error instanceof Error ? error.message : "Could not load this knowledge base.");
+        if (error instanceof DOMException && error.name === "AbortError")
+          return;
+        setPageError(
+          error instanceof Error
+            ? error.message
+            : "Could not load this knowledge base.",
+        );
       } finally {
         if (!controller.signal.aborted) setIsLoading(false);
       }
@@ -373,7 +514,13 @@ export default function KnowledgeBasePage() {
       stopPolling();
       cancelDocumentsRequest();
     };
-  }, [cancelDocumentsRequest, knowledgeBaseId, loadDocuments, pollingCycle, pollingRequired]);
+  }, [
+    cancelDocumentsRequest,
+    knowledgeBaseId,
+    loadDocuments,
+    pollingCycle,
+    pollingRequired,
+  ]);
 
   function handleFileSelection(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
@@ -412,10 +559,13 @@ export default function KnowledgeBasePage() {
     try {
       const formData = new FormData();
       formData.append("file", selectedFile);
-      const response = await fetch(`${apiUrl}/knowledge-bases/${knowledgeBaseId}/documents`, {
-        method: "POST",
-        body: formData,
-      });
+      const response = await fetch(
+        `${apiUrl}/knowledge-bases/${knowledgeBaseId}/documents`,
+        {
+          method: "POST",
+          body: formData,
+        },
+      );
       if (!response.ok) throw new Error(await errorMessage(response));
 
       const [document] = parseAndSortDocuments([await response.json()]);
@@ -423,7 +573,9 @@ export default function KnowledgeBasePage() {
       setDocuments((currentDocuments) =>
         parseAndSortDocuments([
           document,
-          ...currentDocuments.filter((currentDocument) => currentDocument.id !== document.id),
+          ...currentDocuments.filter(
+            (currentDocument) => currentDocument.id !== document.id,
+          ),
         ]),
       );
       setIsDocumentsLoading(false);
@@ -432,42 +584,131 @@ export default function KnowledgeBasePage() {
       setPollingCycle((currentCycle) => currentCycle + 1);
       cancelSelection();
     } catch (error: unknown) {
-      setFileError(error instanceof Error ? error.message : "Could not upload the document.");
+      setFileError(
+        error instanceof Error
+          ? error.message
+          : "Could not upload the document.",
+      );
     } finally {
       setIsUploading(false);
     }
   }
 
-  if (isLoading) return <main className="knowledge-base-detail"><p className="muted">Loading knowledge base…</p></main>;
-  if (pageError) return <main className="knowledge-base-detail"><p className="form-error" role="alert">{pageError}</p></main>;
+  async function handleDelete(document: DocumentListItem) {
+    if (currentDeletion?.pending) return;
+    setDeletionActivity({
+      knowledgeBaseId,
+      documentId: document.id,
+      pending: true,
+      error: null,
+    });
+    setSuccessMessage(null);
+    try {
+      const result = await deletionRequests.submit(
+        document,
+        () => true, // The dialog confirmed the original request; pending Retry stays unchanged.
+        async (id, signal) => {
+          const response = await fetch(
+            `${apiUrl}/knowledge-bases/${knowledgeBaseId}/documents/${id}`,
+            { method: "DELETE", signal },
+          );
+          if (response.status !== 204)
+            throw new Error(await errorMessage(response));
+        },
+      );
+      if (!result.current) return;
+      if (result.cancelled) {
+        setDeletionActivity(null);
+        return;
+      }
+      if (result.error) throw result.error;
+      cancelDocumentsRequest();
+      setDocuments((current) => deletionRequests.filterDocuments(current));
+      setDeletionActivity(null);
+      setSuccessMessage(`Deleted ${document.original_filename}.`);
+    } catch (error: unknown) {
+      setDeletionActivity({
+        knowledgeBaseId,
+        documentId: document.id,
+        pending: false,
+        error:
+          error instanceof Error
+            ? error.message
+            : "Could not delete the document. Please try again.",
+      });
+      await loadDocuments({ background: true });
+    }
+    setPollingCycle((cycle) => cycle + 1);
+  }
+
+  if (isLoading)
+    return (
+      <main className="knowledge-base-detail">
+        <p className="muted">Loading knowledge base…</p>
+      </main>
+    );
+  if (pageError)
+    return (
+      <main className="knowledge-base-detail">
+        <p className="form-error" role="alert">
+          {pageError}
+        </p>
+      </main>
+    );
   if (!knowledgeBase) return null;
 
   return (
     <main className="knowledge-base-detail">
-      <Link className="back-link" href="/knowledge-bases">← Knowledge Bases</Link>
+      {currentDeletionTarget && (
+        <DeleteConfirmation
+          key={currentDeletionTarget.id}
+          title="Delete document?"
+          message={deletionConfirmation(currentDeletionTarget.original_filename)}
+          confirmLabel="Delete document"
+          onCancel={() => setDeletionTarget(null)}
+          onConfirm={() => {
+            setDeletionTarget(null);
+            void handleDelete(currentDeletionTarget);
+          }}
+        />
+      )}
+      <Link className="back-link" href="/knowledge-bases">
+        ← Knowledge Bases
+      </Link>
       <section className="page-heading">
         <p className="eyebrow">Knowledge Base</p>
         <h1>{knowledgeBase.name}</h1>
-        <p className="intro">Upload source documents and follow their preparation status here.</p>
+        <p className="intro">
+          Upload source documents and follow their preparation status here.
+        </p>
       </section>
 
       <section className="document-list" aria-labelledby="documents-title">
         <div className="list-heading">
           <h2 id="documents-title">Documents</h2>
-          {!isDocumentsLoading && !documentsError && <span>{documents.length}</span>}
+          {!isDocumentsLoading && !documentsError && (
+            <span>{documents.length}</span>
+          )}
         </div>
 
         {isDocumentsLoading && <p className="muted">Loading documents...</p>}
         {documentsError && (
           <div className="empty-state" role="alert">
             <p>{documentsError}</p>
-            <button type="button" onClick={() => void loadDocuments()}>Retry</button>
+            <button type="button" onClick={() => void loadDocuments()}>
+              Retry
+            </button>
           </div>
         )}
         {!isDocumentsLoading && !documentsError && documents.length === 0 && (
           <div className="empty-state">
-            <p>No documents uploaded yet. Upload a source file to add it to this knowledge base.</p>
-            <button type="button" onClick={openFilePicker}>Upload a document</button>
+            <p>
+              No documents uploaded yet. Upload a source file to add it to this
+              knowledge base.
+            </p>
+            <button type="button" onClick={openFilePicker}>
+              Upload a document
+            </button>
           </div>
         )}
         {!isDocumentsLoading && !documentsError && documents.length > 0 && (
@@ -481,19 +722,58 @@ export default function KnowledgeBasePage() {
                 <li key={document.id}>
                   <div>
                     <strong>{document.original_filename}</strong>
-                    <span>{document.file_type.toUpperCase()} &middot; {formatFileSize(document.file_size_bytes)}</span>
-                    <time dateTime={document.uploaded_at}>Uploaded {formatUploadTime(document.uploaded_at)}</time>
+                    <span>
+                      {document.file_type.toUpperCase()} &middot;{" "}
+                      {formatFileSize(document.file_size_bytes)}
+                    </span>
+                    <time dateTime={document.uploaded_at}>
+                      Uploaded {formatUploadTime(document.uploaded_at)}
+                    </time>
                   </div>
-                  <div
-                    className={`document-status document-status--${status.tone}`}
-                    aria-label={`Processing status: ${status.label}`}
-                    aria-live="polite"
-                  >
-                    <strong>
-                      <span className="document-status-dot" aria-hidden="true" />
-                      {status.label}
-                    </strong>
-                    {status.description && <span>{status.description}</span>}
+                  {document.deletion_pending ? (
+                    <div role="status">
+                      <strong>Deletion incomplete</strong>
+                      <p>
+                        Excluded from searches. Retry deletion to finish
+                        permanent removal.
+                      </p>
+                    </div>
+                  ) : (
+                    <div
+                      className={`document-status document-status--${status.tone}`}
+                      aria-label={`Processing status: ${status.label}`}
+                      aria-live="polite"
+                    >
+                      <strong>
+                        <span
+                          className="document-status-dot"
+                          aria-hidden="true"
+                        />
+                        {status.label}
+                      </strong>
+                      {status.description && <span>{status.description}</span>}
+                    </div>
+                  )}
+                  <div>
+                    <button
+                      type="button"
+                      disabled={currentDeletion?.pending ?? false}
+                      onClick={() => {
+                        if (document.deletion_pending) void handleDelete(document);
+                        else setDeletionTarget({ document, requests: deletionRequests });
+                      }}
+                    >
+                      {currentDeletion?.pending &&
+                      currentDeletion.documentId === document.id
+                        ? "Deleting…"
+                        : document.deletion_pending
+                          ? "Retry deletion"
+                          : "Delete"}
+                    </button>
+                    {currentDeletion?.documentId === document.id &&
+                      currentDeletion.error && (
+                        <p role="alert">{currentDeletion.error}</p>
+                      )}
                   </div>
                 </li>
               );
@@ -502,13 +782,20 @@ export default function KnowledgeBasePage() {
         )}
       </section>
 
-      <SourceSearchPanel key={knowledgeBaseId} knowledgeBaseId={knowledgeBaseId} />
+      <SourceSearchPanel
+        key={knowledgeBaseId}
+        knowledgeBaseId={knowledgeBaseId}
+      />
 
       <section className="upload-panel" aria-labelledby="upload-title">
         <h2 id="upload-title">Upload document</h2>
-        <p className="muted">PDF, TXT, or DOCX · Maximum 25 MB · One file per upload</p>
+        <p className="muted">
+          PDF, TXT, or DOCX · Maximum 25 MB · One file per upload
+        </p>
         <form onSubmit={handleUpload} noValidate>
-          <label className="file-label" htmlFor="document-file">Select a file</label>
+          <label className="file-label" htmlFor="document-file">
+            Select a file
+          </label>
           <input
             ref={fileInput}
             id="document-file"
@@ -526,7 +813,12 @@ export default function KnowledgeBasePage() {
                 <strong>{selectedFile.name}</strong>
                 <span>{formatFileSize(selectedFile.size)}</span>
               </div>
-              <button type="button" className="text-button" onClick={cancelSelection} disabled={isUploading}>
+              <button
+                type="button"
+                className="text-button"
+                onClick={cancelSelection}
+                disabled={isUploading}
+              >
                 Cancel
               </button>
             </div>
@@ -537,8 +829,16 @@ export default function KnowledgeBasePage() {
               {isUploading ? "Uploading…" : "Upload document"}
             </button>
           </div>
-          {fileError && <p className="form-error" id="document-file-error" role="alert">{fileError}</p>}
-          {successMessage && <p className="success-message" role="status">{successMessage}</p>}
+          {fileError && (
+            <p className="form-error" id="document-file-error" role="alert">
+              {fileError}
+            </p>
+          )}
+          {successMessage && (
+            <p className="success-message" role="status">
+              {successMessage}
+            </p>
+          )}
         </form>
       </section>
     </main>

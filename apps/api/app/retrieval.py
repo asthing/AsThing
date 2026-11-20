@@ -153,6 +153,7 @@ class SourceRetrievalService:
                 .where(
                     Document.knowledge_base_id == knowledge_base_id,
                     Document.status == DocumentStatus.READY,
+                    Document.deletion_requested_at.is_(None),
                 )
                 .limit(1)
             )
@@ -181,6 +182,7 @@ class SourceRetrievalService:
                     DocumentChunk.id.in_(chunk_ids),
                     Document.knowledge_base_id == knowledge_base_id,
                     Document.status == DocumentStatus.READY,
+                    Document.deletion_requested_at.is_(None),
                 )
             ).all()
         except SQLAlchemyError:

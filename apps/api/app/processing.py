@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from enum import StrEnum
 from io import BytesIO
 from typing import Protocol
-from uuid import NAMESPACE_URL, UUID, uuid5
+from uuid import NAMESPACE_URL, UUID, uuid4, uuid5
 
 from docx import Document as DocxDocument
 from pypdf import PdfReader
@@ -15,7 +15,14 @@ from sqlalchemy import delete, select
 from sqlalchemy.exc import SQLAlchemyError
 
 from app.database import SessionLocal
-from app.document_models import Document, DocumentChunk, DocumentProcessingJob, ProcessingJobState
+from app.document_coordination import lock_current_processing_document
+from app.document_models import (
+    Document,
+    DocumentChunk,
+    DocumentProcessingJob,
+    ProcessingJobState,
+    utc_now,
+)
 from app.embeddings import LocalEmbeddingService
 from app.processing_jobs import ClaimedProcessingJob, SessionFactory
 from app.storage import ObjectStorage, ObjectStorageError, get_storage_client
@@ -161,15 +168,7 @@ class StoredDocumentProcessor:
 
         session = self.session_factory()
         try:
-            active_job_id = session.scalar(
-                select(DocumentProcessingJob.id).where(
-                    DocumentProcessingJob.id == claim.job_id,
-                    DocumentProcessingJob.document_id == claim.document_id,
-                    DocumentProcessingJob.state == ProcessingJobState.PROCESSING,
-                    DocumentProcessingJob.attempt_count == claim.attempt_count,
-                )
-            )
-            if active_job_id is None:
+            if not lock_current_processing_document(session, claim):
                 raise DocumentProcessingError(
                     ProcessingErrorCategory.CHUNK_PERSISTENCE_FAILED
                 )
@@ -259,7 +258,31 @@ class StoredDocumentProcessor:
     ) -> None:
         if not vectors or any(vector.document_id != claim.document_id for vector in vectors):
             raise VectorStoreError(VectorStoreErrorCategory.VECTOR_INVALID)
-        self.vector_store.upsert(vectors)
+        token = uuid4()
+        session = self.session_factory()
+        try:
+            if not lock_current_processing_document(session, claim):
+                raise VectorStoreError(VectorStoreErrorCategory.UPSERT_FAILED)
+            job = session.get(DocumentProcessingJob, claim.job_id)
+            job.vector_write_token = token
+            job.vector_write_started_at = utc_now()
+            # Commit BEFORE dispatch: releasing locks or losing the worker is not remote
+            # cancellation. This obligation survives even a crash before sending the RPC.
+            session.commit()
+            if not lock_current_processing_document(session, claim, vector_write_token=token):
+                raise VectorStoreError(VectorStoreErrorCategory.UPSERT_FAILED)
+            self.vector_store.upsert(vectors)
+            # The vector-store contract requires a completed acknowledgement. Only that
+            # successful return can clear this token; all ambiguous failures retain it.
+            job = session.get(DocumentProcessingJob, claim.job_id)
+            job.vector_write_token = None
+            job.vector_write_started_at = None
+            session.commit()
+        except SQLAlchemyError:
+            session.rollback()
+            raise VectorStoreError(VectorStoreErrorCategory.UPSERT_FAILED) from None
+        finally:
+            session.close()
 
     def delete_vectors(self, document_id: UUID, point_ids: Sequence[UUID]) -> None:
         # Point deletion handles known persisted chunks; the payload filter also catches a

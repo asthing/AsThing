@@ -71,7 +71,9 @@ def recover_processing_jobs(
     try:
         statement = (
             select(DocumentProcessingJob.id, DocumentProcessingJob.document_id)
+            .join(Document, Document.id == DocumentProcessingJob.document_id)
             .where(
+                Document.deletion_requested_at.is_(None),
                 or_(
                     DocumentProcessingJob.state == ProcessingJobState.QUEUED,
                     DocumentProcessingJob.state == ProcessingJobState.CLEANUP_PENDING,
@@ -138,6 +140,30 @@ def claim_processing_job(
     lease_expires_at = claim_time + lease_duration
     session = session_factory()
     try:
+        # A lost worker may have dispatched a remote write without recording its ACK.
+        # Preserve that attempt/obligation; never replay processing over an unknown write.
+        quarantined = session.execute(
+            update(DocumentProcessingJob)
+            .where(
+                DocumentProcessingJob.document_id == document_id,
+                DocumentProcessingJob.vector_write_token.is_not(None),
+                DocumentProcessingJob.state == ProcessingJobState.PROCESSING,
+                or_(
+                    DocumentProcessingJob.lease_expires_at.is_(None),
+                    DocumentProcessingJob.lease_expires_at <= claim_time,
+                ),
+            )
+            .values(
+                state=ProcessingJobState.CLEANUP_PENDING,
+                failure_code="VECTOR_PERSISTENCE_FAILED",
+                failure_message="Document vectors could not be saved.",
+                lease_expires_at=None,
+                updated_at=claim_time,
+            )
+        )
+        if quarantined.rowcount:
+            session.commit()
+            return None
         eligible_job = or_(
             DocumentProcessingJob.state == ProcessingJobState.QUEUED,
             and_(
@@ -150,7 +176,10 @@ def claim_processing_job(
         )
         claim_statement = (
             update(DocumentProcessingJob)
-            .where(DocumentProcessingJob.document_id == document_id, eligible_job)
+            .where(
+                DocumentProcessingJob.document_id == document_id, eligible_job,
+                DocumentProcessingJob.vector_write_token.is_(None),
+            )
             .values(
                 state=ProcessingJobState.PROCESSING,
                 attempt_count=DocumentProcessingJob.attempt_count + 1,
@@ -177,6 +206,7 @@ def claim_processing_job(
             update(Document)
             .where(
                 Document.id == claimed.document_id,
+                Document.deletion_requested_at.is_(None),
                 Document.status.in_([DocumentStatus.UPLOADED, DocumentStatus.PROCESSING]),
             )
             .values(

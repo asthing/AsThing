@@ -64,6 +64,11 @@ class Document(Base):
     failure_code: Mapped[str | None] = mapped_column(String(64))
     failure_message: Mapped[str | None] = mapped_column(String(255))
     processing_attempt_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    deletion_requested_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    @property
+    def deletion_pending(self) -> bool:
+        return self.deletion_requested_at is not None
 
 
 class DocumentProcessingJob(Base):
@@ -87,6 +92,10 @@ class DocumentProcessingJob(Base):
     attempt_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     lease_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     last_heartbeat_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Non-null until this exact external write receives a completed acknowledgement.
+    # A timeout/crash must not erase the obligation or allow a new attempt to replace it.
+    vector_write_token: Mapped[UUID | None] = mapped_column()
+    vector_write_started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     failure_code: Mapped[str | None] = mapped_column(String(64))
     failure_message: Mapped[str | None] = mapped_column(String(255))
     queued_at: Mapped[datetime] = mapped_column(

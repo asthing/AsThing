@@ -1,7 +1,7 @@
 from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Response, status
 from pydantic import BaseModel, ConfigDict, field_serializer, field_validator
 from sqlalchemy import DateTime, String, desc, select
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
@@ -96,3 +96,33 @@ def list_knowledge_bases(session: Session = Depends(get_session)) -> list[Knowle
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Knowledge base storage is unavailable.",
         ) from None
+
+
+def get_knowledge_base_deletion_service():
+    # Lazy import avoids a metadata-registration cycle with document deletion.
+    from app.knowledge_base_deletion import KnowledgeBaseDeletionService
+
+    return KnowledgeBaseDeletionService()
+
+
+@router.delete("/{knowledge_base_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_knowledge_base(
+    knowledge_base_id: UUID,
+    deletion=Depends(get_knowledge_base_deletion_service),
+) -> Response:
+    from app.knowledge_base_deletion import (
+        DELETION_INCOMPLETE,
+        DeletionKnowledgeBaseNotFound,
+        KnowledgeBaseDeletionConflict,
+        KnowledgeBaseDeletionUnavailable,
+    )
+
+    try:
+        deletion.delete(knowledge_base_id)
+    except DeletionKnowledgeBaseNotFound:
+        raise HTTPException(status_code=404, detail="Knowledge base not found.") from None
+    except KnowledgeBaseDeletionConflict as error:
+        raise HTTPException(status_code=409, detail=str(error)) from None
+    except KnowledgeBaseDeletionUnavailable:
+        raise HTTPException(status_code=503, detail=DELETION_INCOMPLETE) from None
+    return Response(status_code=status.HTTP_204_NO_CONTENT)

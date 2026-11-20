@@ -293,7 +293,7 @@ class _QdrantClientAdapter:
     def upsert(self, collection_name: str, points: Sequence[VectorPoint]) -> None:
         from qdrant_client.models import PointStruct
 
-        self.client.upsert(
+        result = self.client.upsert(
             collection_name=collection_name,
             points=[
                 PointStruct(id=str(point.point_id), vector=point.vector, payload=point.payload)
@@ -301,6 +301,8 @@ class _QdrantClientAdapter:
             ],
             wait=True,
         )
+        if getattr(result.status, "value", result.status) != "completed":
+            raise VectorStoreError(VectorStoreErrorCategory.UPSERT_FAILED)
 
     def search(
         self,
@@ -351,7 +353,7 @@ class _QdrantClientAdapter:
 
         if not self.client.collection_exists(collection_name):
             return
-        self.client.delete(
+        result = self.client.delete(
             collection_name=collection_name,
             points_selector=FilterSelector(
                 filter=Filter(
@@ -364,6 +366,8 @@ class _QdrantClientAdapter:
             ),
             wait=True,
         )
+        if getattr(result.status, "value", result.status) != "completed":
+            raise VectorStoreError(VectorStoreErrorCategory.DELETE_FAILED)
 
     def delete_points(self, collection_name: str, point_ids: Sequence[UUID]) -> None:
         from qdrant_client.models import PointIdsList

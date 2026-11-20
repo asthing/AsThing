@@ -5,13 +5,21 @@ from tempfile import SpooledTemporaryFile
 from typing import BinaryIO
 from uuid import UUID, uuid4
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, File, HTTPException, Response, UploadFile, status
 from pydantic import BaseModel, ConfigDict, field_serializer
 from sqlalchemy import desc, select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.database import get_session
+from app.document_deletion import (
+    PROCESSING_CONFLICT,
+    DeletionDocumentNotFound,
+    DeletionProcessingConflict,
+    DocumentDeletionService,
+    DocumentDeletionUnavailable,
+    get_document_deletion_service,
+)
 from app.document_models import (
     Document,
     DocumentProcessingJob,
@@ -50,6 +58,7 @@ class DocumentResponse(BaseModel):
     processing_completed_at: datetime | None = None
     failure_code: str | None = None
     failure_message: str | None = None
+    deletion_pending: bool = False
 
     @field_serializer("uploaded_at")
     def serialize_uploaded_at(self, value: datetime) -> datetime:
@@ -76,6 +85,25 @@ def get_knowledge_base_or_404(knowledge_base_id: UUID, session: Session) -> Know
             detail="Knowledge base not found.",
         )
     return knowledge_base
+
+
+@router.delete("/{knowledge_base_id}/documents/{document_id}", status_code=204)
+def delete_document(
+    knowledge_base_id: UUID,
+    document_id: UUID,
+    session: Session = Depends(get_session),
+    deletion: DocumentDeletionService = Depends(get_document_deletion_service),
+) -> Response:
+    get_knowledge_base_or_404(knowledge_base_id, session)
+    try:
+        deletion.delete(knowledge_base_id, document_id)
+    except DeletionDocumentNotFound:
+        raise HTTPException(status_code=404, detail="Document not found.") from None
+    except DeletionProcessingConflict:
+        raise HTTPException(status_code=409, detail=PROCESSING_CONFLICT) from None
+    except DocumentDeletionUnavailable as error:
+        raise HTTPException(status_code=503, detail=str(error)) from None
+    return Response(status_code=204)
 
 
 @router.get("/{knowledge_base_id}", response_model=KnowledgeBaseResponse)

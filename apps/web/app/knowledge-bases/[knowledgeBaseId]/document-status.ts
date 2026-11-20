@@ -9,6 +9,7 @@ export type DocumentListItem = {
   status: PublicDocumentStatus;
   uploaded_at: string;
   failure_message: string | null;
+  deletion_pending?: boolean;
 };
 
 export type DocumentStatusPresentation = {
@@ -42,7 +43,8 @@ export function shouldPollDocuments(
   return (
     completedAttempts < DOCUMENT_POLL_MAX_ATTEMPTS &&
     documents.some(
-      (document) => document.status === "Uploaded" || document.status === "Processing",
+      (document) => document.deletion_pending ||
+        document.status === "Uploaded" || document.status === "Processing",
     )
   );
 }
@@ -148,6 +150,7 @@ function parseDocument(value: unknown): DocumentListItem {
     typeof value.file_type !== "string" ||
     typeof value.uploaded_at !== "string" ||
     (value.failure_message !== null && typeof value.failure_message !== "string")
+    || (value.deletion_pending !== undefined && typeof value.deletion_pending !== "boolean")
   ) {
     throw new Error("Document data is unavailable. Please try again.");
   }
@@ -161,6 +164,7 @@ function parseDocument(value: unknown): DocumentListItem {
     status: value.status as PublicDocumentStatus,
     uploaded_at: value.uploaded_at,
     failure_message: value.failure_message,
+    ...(value.deletion_pending === undefined ? {} : { deletion_pending: value.deletion_pending }),
   };
 }
 

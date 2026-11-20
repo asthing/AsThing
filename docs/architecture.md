@@ -38,6 +38,17 @@ BAAI/bge-m3 runs locally on CPU inside both the API and worker, using the pinned
 
 Source search embeds the question in the API, searches Qdrant within the selected knowledge base and embedding revision, and hydrates up to five matching Ready chunks from PostgreSQL. Source search returns excerpts without generating an answer.
 
+Permanent document deletion commits durable intent in PostgreSQL before external cleanup.
+Processing claims, derived-data writes, and deletion coordinate with job-first/document-second
+row locks. Deletion-marked documents are excluded from Ready checks and chunk hydration.
+Cleanup removes Qdrant vectors and the MinIO original before deleting chunks, jobs, and metadata;
+partial failures retain identifiers for UI Retry or bounded `documents.recover` dispatch.
+Vector upserts first commit a durable write token. Lost acknowledgements retain that
+token and block terminal processing/deletion, even after successful best-effort vector
+cleanup; database locks cannot cancel remote work. With the pinned Qdrant interface,
+unidentified writes may remain conservatively pending until verifiable settlement is possible.
+See the [deletion runbook](runbooks/document-deletion.md) for the API contract and in-flight request limitation.
+
 For one-shot answers, the API reuses retrieval, selects only the highest-ranked chunk (`MAX_ANSWER_CONTEXT_CHUNKS = 1` in `app/answers.py`), and sends the trimmed question and that source text to Ollama. Ollama serves `qwen2.5:3b-instruct-q4_K_M` and stores its model in a separate `ollama_model_cache` volume. The API verifies the pinned manifest digest before each generation, validates the generated reference keys, and returns an answer with response-scoped source references or an explicit `no_answer`. Prompts, answers, and conversation history are not persisted. Ollama is internal to Compose, permits one active generation, and is not required for API startup, uploads, processing, or source search.
 
 Nuxt, Django, cloud infrastructure, Kafka, DynamoDB, and Kubernetes are deferred until their roadmap phases.

@@ -1,8 +1,10 @@
 import os
+from contextlib import closing
 from functools import lru_cache
 from typing import BinaryIO
 
 import boto3
+from botocore.config import Config
 from botocore.exceptions import BotoCoreError, ClientError
 
 
@@ -47,6 +49,25 @@ class ObjectStorage:
             return response["Body"].read()
         except (BotoCoreError, ClientError) as error:
             raise ObjectStorageError("Object storage download failed.") from error
+
+    def delete_file_strict(self, object_key: str) -> None:
+        """Deletion must distinguish acknowledgement/missing objects from infrastructure failure."""
+        try:
+            # Separate client: upload/download and compensation retain their existing settings.
+            with closing(boto3.client(
+                "s3", endpoint_url=required_environment_variable("S3_ENDPOINT_URL"),
+                aws_access_key_id=required_environment_variable("S3_ACCESS_KEY_ID"),
+                aws_secret_access_key=required_environment_variable("S3_SECRET_ACCESS_KEY"),
+                region_name=os.getenv("S3_REGION", "us-east-1"),
+                config=Config(connect_timeout=2, read_timeout=5, retries={"total_max_attempts": 1}),
+            )) as client:
+                client.delete_object(Bucket=self.bucket, Key=object_key)
+        except ClientError as error:
+            if error.response.get("Error", {}).get("Code") in {"NoSuchKey", "NoSuchBucket"}:
+                return
+            raise ObjectStorageError("Object storage deletion failed.") from None
+        except BotoCoreError:
+            raise ObjectStorageError("Object storage deletion failed.") from None
 
     def _ensure_bucket(self) -> None:
         try:

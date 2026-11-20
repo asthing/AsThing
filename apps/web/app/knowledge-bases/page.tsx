@@ -1,7 +1,12 @@
 "use client";
 
-import { FormEvent, useEffect, useRef, useState } from "react";
+import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
+import { DeleteConfirmation } from "../components/delete-confirmation";
+import {
+  createKnowledgeBaseDeletionManager,
+  knowledgeBaseDeletionConfirmation,
+} from "./knowledge-base-deletion";
 
 type KnowledgeBase = {
   id: string;
@@ -38,7 +43,14 @@ export default function KnowledgeBasesPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [deleteError, setDeleteError] = useState<{ id: string; message: string } | null>(null);
+  const [deleteSuccess, setDeleteSuccess] = useState<string | null>(null);
+  const [deletionTarget, setDeletionTarget] = useState<KnowledgeBase | null>(null);
+  const deletion = useMemo(() => createKnowledgeBaseDeletionManager(), []);
   const nameInput = useRef<HTMLInputElement>(null);
+
+  useEffect(() => () => deletion.cancel(), [deletion]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -47,7 +59,8 @@ export default function KnowledgeBasesPage() {
       try {
         const response = await fetch(`${apiUrl}/knowledge-bases`, { signal: controller.signal });
         if (!response.ok) throw new Error(await errorMessage(response));
-        setKnowledgeBases((await response.json()) as KnowledgeBase[]);
+        const loaded = (await response.json()) as KnowledgeBase[];
+        if (!controller.signal.aborted) setKnowledgeBases(deletion.filter(loaded));
       } catch (error: unknown) {
         if (error instanceof DOMException && error.name === "AbortError") return;
         setLoadError(error instanceof Error ? error.message : "Could not load knowledge bases.");
@@ -58,7 +71,37 @@ export default function KnowledgeBasesPage() {
 
     void loadKnowledgeBases();
     return () => controller.abort();
-  }, []);
+  }, [deletion]);
+
+  async function handleDelete(knowledgeBase: KnowledgeBase) {
+    if (deletingId) return;
+    setDeletingId(knowledgeBase.id);
+    setDeleteError(null);
+    setDeleteSuccess(null);
+    const result = await deletion.submit(
+      knowledgeBase,
+      () => true, // Only invoked after confirmation in the in-app dialog.
+      async (id, signal) => {
+        const response = await fetch(`${apiUrl}/knowledge-bases/${id}`, {
+          method: "DELETE", signal,
+        });
+        if (response.status !== 204) throw new Error(await errorMessage(response));
+      },
+    );
+    if (!result.current) return;
+    setDeletingId(null);
+    if (result.cancelled) return;
+    if (result.error) {
+      setDeleteError({
+        id: knowledgeBase.id,
+        message: result.error instanceof Error
+          ? result.error.message : "Could not delete the knowledge base. Please try again.",
+      });
+      return;
+    }
+    setKnowledgeBases((current) => deletion.filter(current));
+    setDeleteSuccess(`Deleted ${knowledgeBase.name} and its documents.`);
+  }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -96,6 +139,19 @@ export default function KnowledgeBasesPage() {
 
   return (
     <main className="knowledge-bases-page">
+      {deletionTarget && (
+        <DeleteConfirmation
+          key={deletionTarget.id}
+          title="Delete knowledge base?"
+          message={knowledgeBaseDeletionConfirmation(deletionTarget.name)}
+          confirmLabel="Delete knowledge base"
+          onCancel={() => setDeletionTarget(null)}
+          onConfirm={() => {
+            setDeletionTarget(null);
+            void handleDelete(deletionTarget);
+          }}
+        />
+      )}
       <section className="page-heading">
         <p className="eyebrow">Workspace</p>
         <h1>Knowledge Bases</h1>
@@ -134,6 +190,7 @@ export default function KnowledgeBasesPage() {
 
         {isLoading && <p className="muted">Loading knowledge bases…</p>}
         {loadError && <p className="form-error" role="alert">{loadError}</p>}
+        {deleteSuccess && <p role="status">{deleteSuccess}</p>}
         {!isLoading && !loadError && knowledgeBases.length === 0 && (
           <div className="empty-state">
             <p>No knowledge bases yet. Create one to organize your documents by topic.</p>
@@ -148,7 +205,17 @@ export default function KnowledgeBasesPage() {
                   <strong>{knowledgeBase.name}</strong>
                   <time dateTime={knowledgeBase.created_at}>{formatCreatedAt(knowledgeBase.created_at)}</time>
                 </div>
-                <Link className="secondary-link" href={`/knowledge-bases/${knowledgeBase.id}`}>Open</Link>
+                <div>
+                  <Link className="secondary-link" href={`/knowledge-bases/${knowledgeBase.id}`}>Open</Link>
+                  <button type="button" disabled={deletingId !== null}
+                    onClick={() => setDeletionTarget(knowledgeBase)}>
+                    {deletingId === knowledgeBase.id ? "Deleting…"
+                      : deleteError?.id === knowledgeBase.id ? "Retry deletion" : "Delete"}
+                  </button>
+                  {deleteError?.id === knowledgeBase.id && (
+                    <p className="form-error" role="alert">{deleteError.message}</p>
+                  )}
+                </div>
               </li>
             ))}
           </ul>

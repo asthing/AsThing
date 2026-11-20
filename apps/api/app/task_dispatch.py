@@ -1,7 +1,7 @@
 from queue import Empty, Queue
 from threading import Thread
 from typing import Protocol
-from uuid import UUID
+from uuid import UUID, uuid4
 
 PROCESS_DOCUMENT_TASK_NAME = "documents.process"
 TASK_DISPATCH_TIMEOUT_SECONDS = 1.0
@@ -18,6 +18,8 @@ class ProcessingTaskDispatcher(Protocol):
 
 
 class CeleryProcessingTaskDispatcher:
+    task_name = PROCESS_DOCUMENT_TASK_NAME
+
     def dispatch(self, job_id: UUID, document_id: UUID) -> str:
         # Keep Celery and worker modules out of the normal API import path.
         from app.celery_app import celery_app
@@ -27,7 +29,7 @@ class CeleryProcessingTaskDispatcher:
         def publish() -> None:
             try:
                 result = celery_app.send_task(
-                    PROCESS_DOCUMENT_TASK_NAME,
+                    self.task_name,
                     args=[str(document_id)],
                     task_id=str(job_id),
                     retry=False,
@@ -54,3 +56,10 @@ class CeleryProcessingTaskDispatcher:
 
 def get_processing_task_dispatcher() -> ProcessingTaskDispatcher:
     return CeleryProcessingTaskDispatcher()
+
+
+class CeleryDocumentDeletionDispatcher(CeleryProcessingTaskDispatcher):
+    task_name = "documents.delete"
+
+    def dispatch(self, document_id: UUID) -> str:
+        return super().dispatch(uuid4(), document_id)

@@ -374,10 +374,11 @@ def test_vector_failure_is_safe_and_does_not_mark_document_ready(caplog) -> None
 
     document, job, chunks = load_processing_state(document_id, job_id)
     assert result is False
-    assert chunks == []
-    assert document.status == DocumentStatus.FAILED
-    assert document.failure_code == "VECTOR_PERSISTENCE_FAILED"
-    assert job.state == ProcessingJobState.COMPLETED
+    assert chunks  # Keep identifiers until the ambiguous external write is settled.
+    assert document.status == DocumentStatus.PROCESSING
+    assert document.failure_code is None
+    assert job.state == ProcessingJobState.CLEANUP_PENDING
+    assert job.vector_write_token is not None
     assert job.failure_code == "VECTOR_PERSISTENCE_FAILED"
     assert (
         caplog.records[-1].processing_error_category

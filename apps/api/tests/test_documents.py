@@ -221,6 +221,7 @@ def test_list_documents_returns_metadata_newest_first_and_for_one_knowledge_base
         "processing_completed_at": None,
         "failure_code": None,
         "failure_message": None,
+        "deletion_pending": False,
     }
 
 

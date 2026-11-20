@@ -31,11 +31,30 @@ Once the containers are healthy, open:
 
 Open the **Knowledge Bases** navigation link to create and view the single local workspace's knowledge bases. Names are trimmed, must contain 1–100 characters, and are unique without regard to letter case. The API exposes `GET /knowledge-bases` and `POST /knowledge-bases`; the API container applies pending Alembic migrations before it starts.
 
+Use **Delete** beside a knowledge base to permanently remove it and all its documents
+after confirming its name. `DELETE /knowledge-bases/{id}` returns `204` only after
+document storage/vector cleanup and PostgreSQL deletion finish. Processing documents
+block the request with `409`. A cleanup failure returns a safe `503` and keeps the
+knowledge base for **Retry deletion**; documents already removed are not restored.
+After restart, Delete can resume remaining document cleanup. A concurrent upload may
+require retrying; it cannot be left referencing a deleted knowledge base. Existing
+unresolved-vector-write safeguards still prevent final deletion.
+Knowledge-base and document deletion use an in-app confirmation dialog with Cancel
+and Delete actions. Escape or clicking the backdrop cancels without sending a request.
+
 ## Documents
 
 Open a knowledge base to upload one PDF, TXT, or DOCX source document at a time. Files may be up to 25 MiB. Each successful upload is stored in MinIO and recorded in PostgreSQL with an initial `Uploaded` status, then processed asynchronously by the Celery worker. The worker extracts text, persists deterministic chunks in PostgreSQL, generates BAAI/bge-m3 embeddings locally on CPU, and stores vectors in Qdrant. The first processing run downloads the model into the persistent `embedding_model_cache` volume.
 
 The knowledge-base page lists documents newest first and polls for up to four minutes while any document is `Uploaded` or `Processing`. `Ready` means chunks and vectors are persisted for later retrieval. `Failed` shows a safe failure message and leaves no usable chunks or vectors. `GET /knowledge-bases/{knowledge_base_id}/documents` returns the document metadata and current public status.
+
+Use **Delete** on an Uploaded, Ready, or Failed document to permanently remove its original file,
+vectors, chunks, processing job, and metadata. Confirmation names the file; Processing documents
+cannot be deleted. A partial failure leaves a visible **Deletion incomplete** row with **Retry deletion**.
+These rows are excluded from retrieval immediately and participate in the same bounded polling.
+`DELETE /knowledge-bases/{knowledge_base_id}/documents/{document_id}` returns `204` only after all
+cleanup completes. See the [deletion runbook](docs/runbooks/document-deletion.md) for recovery,
+migration safety, and the limitation for requests that already captured evidence.
 
 The local worker uses one process and a prefetch multiplier of one so only one CPU-heavy BGE-M3 task is active at a time. It loads the immutable BAAI/bge-m3 revision `5617a9f61b028005a4858fdac845db406aefb181`; the named model-cache volume preserves that revision across restarts. `PROCESSING_LEASE_SECONDS` configures the durable processing lease and defaults to 300 seconds. The worker renews the lease during long phases, including the first model download and embedding generation. The API does not wait for Redis or Qdrant health to start. Its task-publication attempt has a one-second request deadline, so a temporarily unavailable Redis broker leaves a successfully uploaded document queued for recovery without allowing broker publication to hold the request longer than that bound.
 
